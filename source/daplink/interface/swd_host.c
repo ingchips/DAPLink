@@ -702,23 +702,34 @@ uint8_t swd_flash_syscall_exec(const program_syscall_t *sysCallParam, uint32_t e
     state.r[15]    = entry;                        // PC: Entry Point
     state.xpsr     = 0x01000000;          // xPSR: T = 1, ISR = 0
 
+    #ifdef SWD_DEBUG_0
+    printf("1 %x %x %x %x\n",entry,arg1,arg2,arg3);
+    #endif
     if (!swd_write_debug_state(&state)) {
         return 0;
     }
-
+    #ifdef SWD_DEBUG_0
+    printf("2\n");
+    #endif
     if (!swd_wait_until_halted()) {
         return 0;
     }
-
+    #ifdef SWD_DEBUG_0
+    printf("3\n");
+    #endif
     if (!swd_read_core_register(0, &state.r[0])) {
         return 0;
     }
-
+    #ifdef SWD_DEBUG_0
+    printf("4 %x\n",state.r[0]);
+    #endif
     //remove the C_MASKINTS
     if (!swd_write_word(DBG_HCSR, DBGKEY | C_DEBUGEN | C_HALT)) {
         return 0;
     }
-
+    #ifdef SWD_DEBUG_0
+    printf("5 %d\n",return_type);
+    #endif
     if ( return_type == FLASHALGO_RETURN_POINTER ) {
         // Flash verify functions return pointer to byte following the buffer if successful.
         if (state.r[0] != (arg1 + arg2)) {

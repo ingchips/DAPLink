@@ -18,7 +18,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#include <stdio.h>
 #include "cmsis_os2.h"
 #include "rl_usb.h"
 #include "daplink.h"
@@ -175,7 +175,6 @@ void cdc_process_event()
     }
 
     len_data = uart_write_free();
-
     if (len_data > sizeof(data)) {
         len_data = sizeof(data);
     }

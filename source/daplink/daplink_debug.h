@@ -54,7 +54,8 @@ static inline uint32_t daplink_debug(uint8_t *data, uint32_t size)
 
 #endif
 
-#define debug_msg(fmt, args...) daplink_debug_print(fmt, ## args);
+//#define debug_msg(fmt, args...) daplink_debug_print(fmt, ## args);
+#define debug_msg(fmt, args...) printf(fmt, ## args);
 #define debug_data(buf, size) daplink_debug(buf, size);
 
 #endif

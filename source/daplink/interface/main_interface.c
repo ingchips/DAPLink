@@ -262,7 +262,7 @@ void USBD_SignalHandler()
 }
 
 extern void cdc_process_event(void);
-
+uint32_t SystemCoreClockDate;
 void main_task(void * arg)
 {
     // State processing
@@ -322,7 +322,8 @@ void main_task(void * arg)
     // Update versions and IDs
     info_init();
     // Update bootloader if it is out of date
-    bootloader_check_and_update();
+//    bootloader_check_and_update();
+    SystemCoreClockDate = SYSCTRL_GetPLLClk();
     // USB
     usbd_init();
 #ifdef DRAG_N_DROP_SUPPORT
@@ -548,6 +549,7 @@ void main_task(void * arg)
     }
 }
 
+
 int main(void)
 {
     // Explicitly set the vector table since the bootloader might not set
@@ -557,6 +559,7 @@ int main(void)
 #endif
     // initialize vendor sdk
     sdk_init();
+    printf("main\r\n");
 
     // Initialize CMSIS-RTOS
     osKernelInitialize();

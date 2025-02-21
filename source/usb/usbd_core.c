@@ -20,9 +20,11 @@
  */
 
 #include <string.h>
+#include <stdio.h>
 #include "rl_usb.h"
 #include "usb_for_lib.h"
 #include "info.h"
+#include "ing91682a.h"
 
 U16 USBD_DeviceStatus;
 U8 USBD_DeviceAddress;
@@ -88,6 +90,9 @@ void usbd_reset_core(void)
     USBD_EndPointMask  = 0x00010001;
     USBD_EndPointHalt  = 0x00000000;
     USBD_EndPointStall = 0x00000000;
+    
+    extern void USBD_CDC_ACM_SOF_Event_FIX_Reset(void);
+    USBD_CDC_ACM_SOF_Event_FIX_Reset();
 }
 
 
@@ -130,15 +135,22 @@ void USBD_DataInStage(void)
 {
     U32 cnt;
 
+    #if 0
     if (USBD_EP0Data.Count > usbd_max_packet0) {
         cnt = usbd_max_packet0;
     } else {
         cnt = USBD_EP0Data.Count;
     }
+    #endif
+    cnt = USBD_EP0Data.Count;
 
     if (!cnt) {
         USBD_ZLP = 0;
     }
+    
+    BSP_DEBUG_HISTORY(USBD_CORE_DEBUG_DATA_IN|(USBD_EP0Data.Count),1<<0);
+    BSP_DEBUG_HISTORY(*((uint32_t*)(USBD_EP0Data.pData)+0),1<<0);
+    BSP_DEBUG_HISTORY(*((uint32_t*)(USBD_EP0Data.pData)+1),1<<0);
 
     cnt = USBD_WriteEP(0x80, USBD_EP0Data.pData, cnt);
     USBD_EP0Data.pData += cnt;
@@ -154,10 +166,13 @@ void USBD_DataInStage(void)
 
 void USBD_DataOutStage(void)
 {
+    // recv all data in one iteration
+    #if 1
     U32 cnt;
     cnt = USBD_ReadEP(0x00, USBD_EP0Data.pData, USBD_EP0Data.Count);
     USBD_EP0Data.pData += cnt;
     USBD_EP0Data.Count -= cnt;
+    #endif
 }
 
 
@@ -169,7 +184,8 @@ void USBD_DataOutStage(void)
 
 void USBD_StatusInStage(void)
 {
-    USBD_WriteEP(0x80, NULL, 0);
+    // ingchips, status is handled inside event calback
+    //USBD_WriteEP(0x80, NULL, 0);
 }
 
 
@@ -181,7 +197,8 @@ void USBD_StatusInStage(void)
 
 void USBD_StatusOutStage(void)
 {
-    USBD_ReadEP(0x00, USBD_EP0Buf, usbd_max_packet0);
+    // ingchips, status is handled inside event calback
+    //USBD_ReadEP(0x00, USBD_EP0Buf, usbd_max_packet0);
 }
 
 
@@ -275,7 +292,7 @@ static inline BOOL USBD_ReqSetClrFeature(U32 sc)
                         }
 
                         USBD_ClrStallEP(n);
-                        USBD_ReqClrFeature_MSC(n);
+                        //USBD_ReqClrFeature_MSC(n);
                         USBD_EndPointHalt &= ~m;
                     }
                 } else {
@@ -732,11 +749,18 @@ static inline BOOL USBD_ReqSetInterface(void)
 
 void USBD_EndPoint0(U32 event)
 {
+    BSP_DEBUG_HISTORY(USBD_CORE_DEBUG_EP0_EVENT|(event),1<<0);
+    #ifdef BSP_DEBUG_V0
+    printf("E %d %x\n",event, *(uint32_t*)&USBD_SetupPacket);
+    #endif
     if (event & USBD_EVT_SETUP) {
         USBD_SetupStage();
         USBD_DirCtrlEP(USBD_SetupPacket.bmRequestType.Dir);
         USBD_EP0Data.Count = USBD_SetupPacket.wLength;       /* Number of bytes to transfer */
 
+        BSP_DEBUG_HISTORY(*((uint32_t*)&USBD_SetupPacket),1<<0);
+        BSP_DEBUG_HISTORY(*(((uint32_t*)&USBD_SetupPacket)+1),1<<0);
+        
         switch (USBD_SetupPacket.bmRequestType.Type) {
             case REQUEST_STANDARD:
                 switch (USBD_SetupPacket.bRequest) {
@@ -896,6 +920,7 @@ void USBD_EndPoint0(U32 event)
                         goto stall;                                                  /* not supported */
 
                     case REQUEST_TO_INTERFACE:
+
                         if (USBD_EndPoint0_Setup_HID_ReqToIF()) {
                             goto setup_class_ok;
                         }

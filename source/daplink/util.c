@@ -20,10 +20,11 @@
  */
 
 #include <string.h>
-
+#include <stdio.h>
 #include "util.h"
 #include "settings.h"
 #include "cortex_m.h"
+#include "ing91682a.h"
 
 //remove dependency from vfs_manager
 __WEAK void vfs_mngr_fs_remount(void) {}
@@ -145,6 +146,14 @@ void _util_assert(bool expression, const char *filename, uint16_t line)
     if (expression) {
         return;
     }
+    #ifdef BSP_DEBUG_V0
+    printf("assert %s line %d \n", filename, line);
+    #endif
+    BSP_DEBUG_HISTORY(USBD_ASSERT|line, 1<<30);
+    
+    uint32_t file_name_size = strlen(filename);
+    BSP_DEBUG_HISTORY( (filename[file_name_size-5]<<24) | (filename[file_name_size-4]<<16) |
+                        (filename[file_name_size-3]<<8) | (filename[file_name_size-2]) , 1<<30);
 
     int_state = cortex_int_get_and_disable();
     // Only write the assert if there is not already one

@@ -44,7 +44,7 @@
 #if    (USBD_ENABLE)
 
 U8 USBD_AltSetting[USBD_IF_NUM_MAX];
-U8 USBD_EP0Buf[USBD_MAX_PACKET0];
+U8 USBD_EP0Buf[USBD_MAX_PACKET0] __attribute__ ((aligned (4)));
 const U8 usbd_power = USBD_POWER;
 const U8 usbd_hs_enable = USBD_HS_ENABLE;
 const U8 usbd_bos_enable = USBD_BOS_ENABLE;
@@ -80,12 +80,12 @@ const U16 usbd_hid_inreport_max_sz = USBD_HID_INREPORT_MAX_SZ;
 const U16 usbd_hid_outreport_max_sz = USBD_HID_OUTREPORT_MAX_SZ;
 const U16 usbd_hid_featreport_max_sz = USBD_HID_FEATREPORT_MAX_SZ;
 U16 USBD_HID_PollingCnt;
-U8 USBD_HID_IdleCnt[USBD_HID_INREPORT_NUM];
-U8 USBD_HID_IdleReload[USBD_HID_INREPORT_NUM];
-U8 USBD_HID_IdleSet[USBD_HID_INREPORT_NUM];
-U8 USBD_HID_InReport[USBD_HID_INREPORT_MAX_SZ + 1];
-U8 USBD_HID_OutReport[USBD_HID_OUTREPORT_MAX_SZ + 1];
-U8 USBD_HID_FeatReport[USBD_HID_FEATREPORT_MAX_SZ + 1];
+U8 USBD_HID_IdleCnt[USBD_HID_INREPORT_NUM] __attribute__ ((aligned (4)));
+U8 USBD_HID_IdleReload[USBD_HID_INREPORT_NUM] __attribute__ ((aligned (4)));
+U8 USBD_HID_IdleSet[USBD_HID_INREPORT_NUM] __attribute__ ((aligned (4)));
+U8 USBD_HID_InReport[USBD_HID_INREPORT_MAX_SZ + 1] __attribute__ ((aligned (4)));
+U8 USBD_HID_OutReport[USBD_HID_OUTREPORT_MAX_SZ + 1] __attribute__ ((aligned (4)));
+U8 USBD_HID_FeatReport[USBD_HID_FEATREPORT_MAX_SZ + 1] __attribute__ ((aligned (4)));
 #endif
 
 #if    (USBD_MSC_ENABLE)
@@ -95,7 +95,7 @@ const U8 usbd_msc_ep_bulkout = USBD_MSC_EP_BULKOUT;
 const U16 usbd_msc_maxpacketsize[2] = {USBD_MSC_WMAXPACKETSIZE, USBD_MSC_HS_WMAXPACKETSIZE};
 const U8 *usbd_msc_inquiry_data = USBD_MSC_INQUIRY_DATA;
 const U16 USBD_MSC_BulkBufSize = USBD_MSC_MAX_PACKET;
-U8 USBD_MSC_BulkBuf[USBD_MSC_MAX_PACKET];
+U8 USBD_MSC_BulkBuf[USBD_MSC_MAX_PACKET] __attribute__ ((aligned (4)));
 #endif
 
 #if    (USBD_ADC_ENABLE)
@@ -128,9 +128,9 @@ const U16 usbd_cdc_acm_sendbuf_sz = USBD_CDC_ACM_SENDBUF_SIZE;
 const U16 usbd_cdc_acm_receivebuf_sz = USBD_CDC_ACM_RECEIVEBUF_SIZE;
 const U16 usbd_cdc_acm_maxpacketsize[2] = {USBD_CDC_ACM_WMAXPACKETSIZE, USBD_CDC_ACM_HS_WMAXPACKETSIZE};
 const U16 usbd_cdc_acm_maxpacketsize1[2] = {USBD_CDC_ACM_WMAXPACKETSIZE1, USBD_CDC_ACM_HS_WMAXPACKETSIZE1};
-U8 USBD_CDC_ACM_SendBuf[USBD_CDC_ACM_SENDBUF_SIZE];
-U8 USBD_CDC_ACM_ReceiveBuf[USBD_CDC_ACM_RECEIVEBUF_SIZE];
-U8 USBD_CDC_ACM_NotifyBuf[10];
+U8 USBD_CDC_ACM_SendBuf[USBD_CDC_ACM_SENDBUF_SIZE] __attribute__ ((aligned (4)));
+U8 USBD_CDC_ACM_ReceiveBuf[USBD_CDC_ACM_RECEIVEBUF_SIZE] __attribute__ ((aligned (4)));
+U8 USBD_CDC_ACM_NotifyBuf[10] __attribute__ ((aligned (4)));
 #endif
 
 #if    (USBD_WEBUSB_ENABLE)
@@ -152,8 +152,8 @@ const U8 usbd_bulk_ep_bulkin = USBD_BULK_EP_BULKIN;
 const U8 usbd_bulk_ep_bulkout = USBD_BULK_EP_BULKOUT;
 const U16 usbd_bulk_maxpacketsize[2] = {USBD_BULK_WMAXPACKETSIZE, USBD_BULK_HS_WMAXPACKETSIZE};
 const U16 USBD_Bulk_BulkBufSize = USBD_BULK_MAX_PACKET;
-U8 USBD_Bulk_BulkInBuf[USBD_BULK_MAX_PACKET];
-U8 USBD_Bulk_BulkOutBuf[USBD_BULK_MAX_PACKET];
+U8 USBD_Bulk_BulkInBuf[USBD_BULK_MAX_PACKET] __attribute__ ((aligned (4)));
+U8 USBD_Bulk_BulkOutBuf[USBD_BULK_MAX_PACKET] __attribute__ ((aligned (4)));
 #endif
 
 /*------------------------------------------------------------------------------
@@ -416,7 +416,9 @@ BOOL USBD_EndPoint0_Out_HID_ReqToIF(void)
 #endif  /* (USBD_HID_ENABLE) */
 
 #if    (USBD_MSC_ENABLE)
+
 #ifdef __RTX
+
 #if    (USBD_MSC_EP_BULKIN != USBD_MSC_EP_BULKOUT)
 #if    (USBD_MSC_EP_BULKIN == 1)
 #define USBD_RTX_EndPoint1             USBD_RTX_MSC_EP_BULKIN_Event
@@ -514,6 +516,7 @@ BOOL USBD_EndPoint0_Out_HID_ReqToIF(void)
 #define USBD_RTX_EndPoint15            USBD_RTX_MSC_EP_BULK_Event
 #endif
 #endif
+
 #else
 #if    (USBD_MSC_EP_BULKIN != USBD_MSC_EP_BULKOUT)
 #if    (USBD_MSC_EP_BULKIN == 1)
@@ -614,6 +617,7 @@ BOOL USBD_EndPoint0_Out_HID_ReqToIF(void)
 #endif
 #endif
 #else
+
 void USBD_ReqClrFeature_MSC(U32 EPNum)
 {
 
@@ -1656,7 +1660,7 @@ U16 USBD_HID_DescriptorOffset     = USBD_HID_DESC_OFS;
 
 /* USB Device Standard Descriptor */
 __WEAK \
-const U8 USBD_DeviceDescriptor[] = {
+const U8 USBD_DeviceDescriptor[] __attribute__ ((aligned (4))) = {
     USB_DEVICE_DESC_SIZE,                 /* bLength */
     USB_DEVICE_DESCRIPTOR_TYPE,           /* bDescriptorType */
 #if (USBD_BOS_ENABLE)
@@ -1742,7 +1746,7 @@ const U8 USBD_DeviceQualifier_HS[] = { 0 };
 
 #define USBD_WINUSB_DESC_SET_LEN            (WINUSB_DESCRIPTOR_SET_HEADER_SIZE + USBD_WEBUSB_ENABLE * FUNCTION_SUBSET_LEN + USBD_BULK_ENABLE * FUNCTION_SUBSET_LEN)
 
-U8 USBD_WinUSBDescriptorSetDescriptor[] = {
+U8 USBD_WinUSBDescriptorSetDescriptor[] __attribute__ ((aligned (4))) = {
     WBVAL(WINUSB_DESCRIPTOR_SET_HEADER_SIZE), /* wLength */
     WBVAL(WINUSB_SET_HEADER_DESCRIPTOR_TYPE), /* wDescriptorType */
     0x00, 0x00, 0x03, 0x06, /* >= Win 8.1 */  /* dwWindowsVersion*/
@@ -1825,7 +1829,7 @@ BOOL USBD_EndPoint0_Setup_WinUSB_ReqToDevice(void)
                                            USBD_WINUSB_DESC_LEN * USBD_WINUSB_ENABLE)
 
 __WEAK \
-const U8 USBD_BinaryObjectStoreDescriptor[] = {
+const U8 USBD_BinaryObjectStoreDescriptor[] __attribute__ ((aligned (4))) = {
 	USB_BOS_DESC_SIZE,                      /* bLength */
 	USB_BINARY_OBJECT_STORE_DESCRIPTOR_TYPE,/* bDescriptorType */
 	WBVAL(USBD_BOS_WTOTALLENGTH),           /* wTotalLength */
@@ -2330,7 +2334,7 @@ const U8 USBD_BinaryObjectStoreDescriptor[] = { 0 };
 /* USB Device Configuration Descriptor (for Full Speed) */
 /*   All Descriptors (Configuration, Interface, Endpoint, Class, Vendor) */
 __WEAK \
-U8 USBD_ConfigDescriptor[200] = { 0 };
+U8 USBD_ConfigDescriptor[200] __attribute__ ((aligned (4))) = { 0 };
 
 #if (USBD_HS_ENABLE == 0)               /* If High-speed not enabled, declare dummy descriptors for High-speed */
 __WEAK \
@@ -2390,7 +2394,7 @@ const struct {
 #if (USBD_BULK_ENABLE)
     USBD_STR_DEF(BULK_STRDESC);
 #endif
-} USBD_StringDescriptor
+} USBD_StringDescriptor __attribute__ ((aligned (4)))
 = {
     { 4, USB_STRING_DESCRIPTOR_TYPE, USBD_STRDESC_LANGID },
     USBD_STR_VAL(STRDESC_MAN),
@@ -2458,7 +2462,7 @@ __WEAK \
 struct {
     WEBUSB_URL_DEF(WEBUSB_LANDING_URL);
     WEBUSB_URL_DEF(WEBUSB_ORIGIN_URL);
-} USBD_WebUSBURLDescriptor
+} USBD_WebUSBURLDescriptor __attribute__ ((aligned (4)))
 = {
     WEBUSB_HTTPS_URL_VAL(WEBUSB_LANDING_URL),
     WEBUSB_HTTPS_URL_VAL(WEBUSB_ORIGIN_URL),

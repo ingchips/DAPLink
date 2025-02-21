@@ -24,8 +24,8 @@ cd %~dp0..\
 	@echo UV4 variable is not set, trying to autodetect..
 	if EXIST c:\keil\uv4\uv4.exe (
 		set UV4=c:\keil\uv4\uv4.exe
-	) else if EXIST c:\keil_v5\uv4\uv4.exe (
-		set UV4=c:\keil_v5\uv4\uv4.exe
+	) else if EXIST d:\keil_v5\uv4\uv4.exe (
+		set UV4=d:\keil_v5\uv4\uv4.exe
 	) else goto error_nomdk
 )
 @echo USING UV4=%UV4%
@@ -64,8 +64,8 @@ if not [%requirements_file%]==[] pip install -r %requirements_file%
 		@echo ARM_PATH variable is not set, trying to autodetect..
 		if EXIST C:\KEIL_V4\ARM\ARMCC\ (
 			set ARM_PATH=C:\KEIL_V4\ARM\ARMCC
-		) else if EXIST C:\KEIL_V5\ARM\ARMCC\ (
-			set ARM_PATH=C:\KEIL_V5\ARM\ARMCC
+		) else if EXIST D:\KEIL_V5\ARM\ARMCC\ (
+			set ARM_PATH=D:\KEIL_V5\ARM\ARMCC
 		) else goto error_armpath
 	)
 	@echo USING ARM_PATH=!ARM_PATH!

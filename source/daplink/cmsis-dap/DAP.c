@@ -77,7 +77,7 @@ static uint8_t DAP_Info(uint8_t id, uint8_t *info) {
       length = DAP_GetVendorString((char *)info);
       break;
     case DAP_ID_PRODUCT:
-      length = DAP_GetProductString((char *)info);
+      //length = DAP_GetProductString((char *)info);
       break;
     case DAP_ID_SER_NUM:
       length = DAP_GetSerNumString((char *)info);
@@ -418,7 +418,7 @@ static void Set_DAP_Clock_Delay(uint32_t clock) {
 static uint32_t DAP_SWJ_Clock(const uint8_t *request, uint8_t *response) {
 #if ((DAP_SWD != 0) || (DAP_JTAG != 0))
   uint32_t clock;
-  uint32_t delay;
+  //uint32_t delay;
 
   clock = (uint32_t)(*(request+0) <<  0) |
           (uint32_t)(*(request+1) <<  8) |

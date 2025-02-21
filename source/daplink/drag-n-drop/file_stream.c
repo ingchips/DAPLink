@@ -20,7 +20,7 @@
  */
 
 #include <string.h>
-
+#include <stdio.h>
 #include "file_stream.h"
 #include "util.h"
 #include "intelhex.h"

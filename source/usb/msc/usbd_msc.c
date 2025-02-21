@@ -20,10 +20,11 @@
  */
 
 #include <string.h>
-
+#include <stdio.h>
 #include "rl_usb.h"
 #include "usb_for_lib.h"
 #include "util.h"
+#include "ing91682a.h"
 
 BOOL USBD_MSC_MediaReady = __FALSE;
 BOOL USBD_MSC_ReadOnly = __FALSE;
@@ -33,8 +34,8 @@ U32 USBD_MSC_BlockGroup;
 U32 USBD_MSC_BlockCount;
 U8 *USBD_MSC_BlockBuf;
 
-MSC_CBW USBD_MSC_CBW;       /* Command Block Wrapper */
-MSC_CSW USBD_MSC_CSW;       /* Command Status Wrapper */
+MSC_CBW USBD_MSC_CBW __attribute__ ((aligned (4)));       /* Command Block Wrapper */
+MSC_CSW USBD_MSC_CSW __attribute__ ((aligned (4)));       /* Command Status Wrapper */
 
 BOOL USBD_MSC_MediaReadyEx = __FALSE;   /* Previous state of Media ready */
 BOOL MemOK;     /* Memory OK */
@@ -914,6 +915,7 @@ fail:
                     USBD_MSC_ReadCapacity();
                     break;
 
+                case SCSI_ATA_COMMAND_PASS_THROUGH16:
                 case SCSI_ATA_COMMAND_PASS_THROUGH12:
                     USBD_MSC_ATAPassThrough();
                     break;
@@ -1007,6 +1009,9 @@ fail:
 void USBD_MSC_SetCSW(void)
 {
     USBD_MSC_CSW.dSignature = MSC_CSW_Signature;
+    #ifdef BSP_DEBUG_V0
+    printf("csw: %x %x %x\n",USBD_MSC_CSW.dTag,USBD_MSC_CSW.dDataResidue,USBD_MSC_CSW.bStatus);
+    #endif
     USBD_WriteEP(usbd_msc_ep_bulkin | 0x80, (U8 *)&USBD_MSC_CSW, sizeof(USBD_MSC_CSW));
     BulkStage = MSC_BS_CSW;
 }
@@ -1020,6 +1025,7 @@ void USBD_MSC_SetCSW(void)
 
 void USBD_MSC_BulkIn(void)
 {
+    U8 BulkStage_0 = BulkStage;
     switch (BulkStage) {
         case MSC_BS_DATA_IN:
             switch (USBD_MSC_CBW.CB[0]) {
@@ -1047,6 +1053,11 @@ void USBD_MSC_BulkIn(void)
         default:
             break;
     }
+    BSP_DEBUG_HISTORY(USBD_MSC_IN|(USBD_MSC_CBW.CB[0])|(BulkStage<<8)|BulkStage_0<<16, 1<<usbd_msc_ep_bulkin);
+    BSP_DEBUG_HISTORY(USBD_MSC_CBW.dTag, 1<<usbd_msc_ep_bulkin);
+    #ifdef BSP_DEBUG_V0
+    printf("I %x %x %x [%d-%d]\n",USBD_MSC_CBW.dTag,USBD_MSC_CBW.dDataLength,USBD_MSC_CBW.CB[0],BulkStage_0,BulkStage);
+    #endif
 }
 
 
@@ -1058,6 +1069,7 @@ void USBD_MSC_BulkIn(void)
 
 void USBD_MSC_BulkOut(void)
 {
+    U8 BulkStage_0 = BulkStage;
     switch (BulkStage) {
         case MSC_BS_CBW:
             USBD_MSC_GetCBW();
@@ -1105,6 +1117,11 @@ void USBD_MSC_BulkOut(void)
             USBD_MSC_SetCSW();
             break;
     }
+    BSP_DEBUG_HISTORY(USBD_MSC_OUT|(USBD_MSC_CBW.CB[0])|(BulkStage<<8)|BulkStage_0<<16, 1<<usbd_msc_ep_bulkout);
+    BSP_DEBUG_HISTORY(USBD_MSC_CBW.dTag, 1<<usbd_msc_ep_bulkout);
+    #ifdef BSP_DEBUG_V0
+    printf("O %x %x %x [%d-%d]\n",USBD_MSC_CBW.dTag,USBD_MSC_CBW.dDataLength,USBD_MSC_CBW.CB[0],BulkStage_0,BulkStage);
+    #endif
 }
 
 /** \brief  Handle Reset Events

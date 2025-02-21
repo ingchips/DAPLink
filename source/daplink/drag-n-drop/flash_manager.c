@@ -27,7 +27,12 @@
 #include "settings.h"
 
 // Set to 1 to enable debugging
+
+#ifdef SWD_DEBUG_0
+#define DEBUG_FLASH_MANAGER     1
+#else
 #define DEBUG_FLASH_MANAGER     0
+#endif
 
 #if DEBUG_FLASH_MANAGER
 #include "daplink_debug.h"
@@ -333,7 +338,7 @@ static error_t setup_next_sector(uint32_t addr)
     if (page_erase_enabled) {
         // Erase the current sector
         status = intf->erase_sector(current_sector_addr);
-        flash_manager_printf("    intf->erase_sector(addr=0x%x) ret=%i\r\n", current_sector_addr);
+        flash_manager_printf("    intf->erase_sector(addr=0x%x) ret=%i\r\n", current_sector_addr,status);
         if (ERROR_SUCCESS != status) {
             intf->uninit();
             return status;

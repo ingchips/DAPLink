@@ -47,5 +47,6 @@ extern U32 USBD_GetFrame(void);
 extern U32 USBD_GetError(void);
 extern void USBD_SignalHandler(void);
 extern void USBD_Handler(void);
+extern uint32_t USBD_GetEpConfigState(uint32_t EPNum);
 
 #endif  /* __USBD_HW_H__ */

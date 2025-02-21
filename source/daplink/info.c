@@ -58,7 +58,7 @@ static char string_target_id[32 + 1];
 static char string_hic_id[8 + 1];
 static char string_version[4 + 1];
 
-static char usb_desc_unique_id[2 + sizeof(string_unique_id) * 2];
+static char usb_desc_unique_id[2 + sizeof(string_unique_id) * 2] __attribute__ ((aligned (4)));
 
 
 const char *info_get_unique_id(void)
@@ -209,6 +209,9 @@ void info_set_uuid_target(uint32_t *uuid_data)
 
 bool info_get_bootloader_present(void)
 {
+    return false;
+    
+    #if 0
     if (0 == DAPLINK_ROM_BL_SIZE) {
         return false;
     }
@@ -227,6 +230,7 @@ bool info_get_bootloader_present(void)
     }
 
     return true;
+    #endif
 }
 
 bool info_get_interface_present(void)

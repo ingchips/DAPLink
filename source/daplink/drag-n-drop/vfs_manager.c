@@ -37,7 +37,11 @@
 #include "error.h"
 
 // Set to 1 to enable debugging
+#ifdef SWD_DEBUG_0
+#define DEBUG_VFS_MANAGER     1
+#else
 #define DEBUG_VFS_MANAGER     0
+#endif
 
 #if DEBUG_VFS_MANAGER
 #define vfs_mngr_printf    debug_msg
@@ -347,6 +351,7 @@ void usbd_msc_write_sect(uint32_t sector, uint8_t *buf, uint32_t num_of_sectors)
     if (TRASNFER_FINISHED == file_transfer_state.transfer_state) {
         return;
     }
+
     file_data_handler(sector, buf, num_of_sectors);
 }
 

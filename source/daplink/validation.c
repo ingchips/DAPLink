@@ -20,6 +20,7 @@
  */
 
 #include <string.h>
+#include <stdio.h>
 #include "validation.h"
 #include "target_config.h"
 #include "target_family.h"
@@ -72,6 +73,7 @@ uint8_t validate_bin_nvic_base(const uint8_t *buf)
                     break;
                 }
             }
+            
             if (in_range == 0) {
                 return 0;
             }

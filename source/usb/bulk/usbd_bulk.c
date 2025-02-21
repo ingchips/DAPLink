@@ -28,7 +28,7 @@
 
 static U8 *ptrDataIn;
 static U16 DataInReceLen;
-static DAP_queue DAP_Cmd_queue;
+static DAP_queue DAP_Cmd_queue __attribute__ ((aligned (4)));
 
 static volatile uint8_t  USB_ResponseIdle;
 
@@ -49,12 +49,13 @@ void usbd_bulk_init(void)
 void USBD_BULK_EP_BULKIN_Event(U32 event)
 {
     uint8_t * sbuf = 0;
-    int slen;
+    int slen=0;
     if(DAP_queue_get_send_buf(&DAP_Cmd_queue, &sbuf, &slen)){
         USBD_WriteEP(usbd_bulk_ep_bulkin | 0x80, sbuf, slen);
     } else {
         USB_ResponseIdle = 1;
     }
+
 }
 
 
@@ -70,6 +71,7 @@ void USBD_BULK_EP_BULKOUT_Event(U32 event)
     uint8_t * rbuf;
 
     bytes_rece      = USBD_ReadEP(usbd_bulk_ep_bulkout, ptrDataIn, USBD_Bulk_BulkBufSize - DataInReceLen);
+
     ptrDataIn      += bytes_rece;
     DataInReceLen  += bytes_rece;
 

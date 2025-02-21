@@ -20,12 +20,13 @@
  */
 
 #include <string.h>
-
+#include <stdio.h>
 #include "rl_usb.h"
 #include "usb_for_lib.h"
+#include "ing91682a.h"
 
 #ifndef CDC_ACM_DEFAULT_BAUDRATE
-#define CDC_ACM_DEFAULT_BAUDRATE 9600
+#define CDC_ACM_DEFAULT_BAUDRATE 115200
 #endif
 
 /* Module global variables                                                    */
@@ -55,6 +56,7 @@ CDC_LINE_CODING line_coding;           /*!< Communication settings */
 
 /* end of group USBD_CDC_ACM_GLOBAL_VAR */
 
+extern uint32_t USBD_GetEpConfigState(uint32_t EPNum);
 
 /* Functions that should be provided by user to use standard Virtual COM port
    functionality                                                              */
@@ -212,6 +214,7 @@ __WEAK int32_t USBD_CDC_ACM_Reset(void)
     line_coding.bCharFormat     = 0;
     line_coding.bParityType     = 0;
     line_coding.bDataBits       = 8;
+
     return (USBD_CDC_ACM_PortSetLineCoding(&line_coding));
 }
 
@@ -234,6 +237,7 @@ __WEAK int32_t USBD_CDC_ACM_SetLineCoding(void)
     line_coding.bCharFormat =  USBD_EP0Buf[4];
     line_coding.bParityType =  USBD_EP0Buf[5];
     line_coding.bDataBits   =  USBD_EP0Buf[6];
+
     return (USBD_CDC_ACM_PortSetLineCoding(&line_coding));
 }
 
@@ -310,6 +314,9 @@ int32_t USBD_CDC_ACM_DataSend(const uint8_t *buf, int32_t len)
     len_data      = data_to_send_wr - data_to_send_rd;  /* Num of data in buffer*/
     len_available = ((int32_t)usbd_cdc_acm_sendbuf_sz) - len_data;  /* Num of
                                            bytes of space available           */
+    BSP_DEBUG_HISTORY(USBD_CDC_ACM_DATASEND,1<<usbd_cdc_acm_ep_bulkin);
+    BSP_DEBUG_HISTORY(data_to_send_wr,1<<usbd_cdc_acm_ep_bulkin);
+    BSP_DEBUG_HISTORY(data_to_send_rd,1<<usbd_cdc_acm_ep_bulkin);
 
     if (len_available <= 0) {             /* If no space for data to send       */
         return (0);
@@ -343,6 +350,7 @@ int32_t USBD_CDC_ACM_DataSend(const uint8_t *buf, int32_t len)
     len += len_before_wrap;               /* Total number of bytes prepared for
                                            send                               */
     data_to_send_wr += len;               /* Bytes prepared to send counter     */
+    
     return (len);                         /* Number of bytes accepted for send  */
 }
 
@@ -496,37 +504,46 @@ void USBD_CDC_ACM_Reset_Event(void)
     endpoint if there is data to be sent (USBD_CDC_ACM_EP_BULKIN_HandleData).
  */
 
+uint32_t cdc_temp_fix_cnt = 0;
+uint32_t cdc_temp_fix_flag = 0;
+
+void USBD_CDC_ACM_SOF_Event_FIX_Reset(void)
+{
+    cdc_temp_fix_cnt = 0;
+    cdc_temp_fix_flag = 0;
+}
 void USBD_CDC_ACM_SOF_Event(void)
 {
     if (!USBD_Configuration) {
         // Don't process events until CDC is
         // configured and the endpoints enabled
+        
+        cdc_temp_fix_cnt = 0;
+        cdc_temp_fix_flag = 0;
         return;
     }
+    
+    if(0 == cdc_temp_fix_flag)
+    {
+      if((++cdc_temp_fix_cnt)>100){cdc_temp_fix_flag = 1;}
+      return;
+    }
+    
     if ((!data_read_access)         &&    /* If not read active                 */
-            (ptr_data_received == ptr_data_read) &&     /* If received and read
-                                                     pointers point to same
-                                                     the location             */
-            (ptr_data_received != USBD_CDC_ACM_ReceiveBuf)) {
-        /* and if receive
-                                                       pointer does not already
-                                                       point to the start of
-                                                       the receive buffer       */
+         (ptr_data_received == ptr_data_read) &&     /* If received and read pointers point to same the location             */
+         (ptr_data_received != USBD_CDC_ACM_ReceiveBuf)) 
+    { /* and if receive  pointer does not already point to the start of the receive buffer       */
         data_read_access = 1;               /* Block access to read data          */
-        ptr_data_received = USBD_CDC_ACM_ReceiveBuf;  /* Correct received pointer
-                                                     to point to the start of
-                                                     the receive buffer       */
-        ptr_data_read     = USBD_CDC_ACM_ReceiveBuf;  /* Correct read pointer to
-                                                     point to the start of the
-                                                     receive buffer           */
-        data_no_space_for_receive  = 0;               /* There is space for
-                                                     reception available      */
+        ptr_data_received = USBD_CDC_ACM_ReceiveBuf;  /* Correct received pointer to point to the start of the receive buffer       */
+        ptr_data_read     = USBD_CDC_ACM_ReceiveBuf;  /* Correct read pointer to point to the start of the receive buffer           */
+        data_no_space_for_receive  = 0;               /* There is space for reception available      */
         data_read_access = 0;               /* Allow access to read data          */
     }
 
     if (data_received_pending_pckts &&    /* If packets are pending             */
-            (!data_read_access)          &&    /* and if not read active             */
-            (!data_no_space_for_receive)) {    /* and if there is space to receive   */
+       (!data_read_access)          &&    /* and if not read active             */
+       (!data_no_space_for_receive)) 
+    {/* and if there is space to receive   */
         data_read_access = 1;               /* Disable access to read data        */
         USBD_CDC_ACM_EP_BULKOUT_HandleData(); /* Handle received data             */
         data_read_access = 0;               /* Enable access to read data         */
@@ -534,15 +551,16 @@ void USBD_CDC_ACM_SOF_Event(void)
         if (ptr_data_received != ptr_data_read) {
             USBD_CDC_ACM_DataReceived(ptr_data_received - ptr_data_read);
         }  /* Call
-
                                            received callback                  */
     }
 
     if ((!data_send_access)         &&    /* If send data is not being accessed */
-            (!data_send_active)         &&    /* and send is not active             */
-            (data_to_send_wr - data_to_send_rd) /* and if there is data to be sent    */
+        (!data_send_active)         &&    /* and send is not active             */
+        (data_to_send_wr - data_to_send_rd) && /* and if there is data to be sent    */
+        (USBD_GetEpConfigState(usbd_cdc_acm_ep_bulkin | 0x80))
 //&& ((control_line_state & 3) == 3)    /* and if DTR and RTS is 1            */
-       ) {
+       ) 
+    {
         data_send_access = 1;               /* Block access to send data          */
         data_send_active = 1;               /* Start data sending                 */
         USBD_CDC_ACM_EP_BULKIN_HandleData();/* Handle data to send                */
@@ -582,6 +600,7 @@ static void USBD_CDC_ACM_EP_BULKOUT_HandleData()
         /* Read received packet to receive buf*/
         len_free_to_recv = usbd_cdc_acm_receivebuf_sz - (ptr_data_received - USBD_CDC_ACM_ReceiveBuf);
         len_received       = USBD_ReadEP(usbd_cdc_acm_ep_bulkout, ptr_data_received, len_free_to_recv);
+
         ptr_data_received += len_received;  /* Correct pointer to received data   */
 
         if (data_received_pending_pckts &&  /* If packet was pending              */
@@ -653,9 +672,10 @@ static void USBD_CDC_ACM_EP_BULKIN_HandleData(void)
     data_send_zlp = 0;
     /* Send data                          */
     len_sent = USBD_WriteEP(usbd_cdc_acm_ep_bulkin | 0x80, ptr_data_sent, len_to_send);
+    
     ptr_data_sent    += len_sent;         /* Correct position of sent pointer   */
     data_to_send_rd  += len_sent;         /* Correct num of bytes left to send  */
-
+    
     if (ptr_data_sent == USBD_CDC_ACM_SendBuf + usbd_cdc_acm_sendbuf_sz)
         /* If pointer to sent data wraps      */
     {

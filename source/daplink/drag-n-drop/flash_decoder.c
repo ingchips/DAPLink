@@ -32,7 +32,12 @@
 #include "cmsis_compiler.h"
 
 // Set to 1 to enable debugging
+
+#ifdef SWD_DEBUG_0
+#define DEBUG_FLASH_DECODER     1
+#else
 #define DEBUG_FLASH_DECODER     0
+#endif
 
 #if DEBUG_FLASH_DECODER
 #include "daplink_debug.h"
@@ -85,7 +90,7 @@ flash_decoder_type_t flash_decoder_detect_type(const uint8_t *data, uint32_t siz
             return FLASH_DECODER_TYPE_UNKNOWN;
         }
     }
-
+    
     // Check if a valid vector table for the target can be found
     if (validate_bin_nvic(data)) {
         if(!addr_valid){ //binary is a bin type

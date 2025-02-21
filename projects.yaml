@@ -101,6 +101,10 @@ module:
         - records/rtos/rtos-cm3.yaml
         - records/hic_hal/stm32f103xb.yaml
         - records/usb/usb-hid.yaml
+    hic_ing91682a: &module_hic_ing91682a
+        - records/rtos/rtos-cm4.yaml
+        - records/hic_hal/ing91682a.yaml
+        - records/usb/usb-bulk.yaml
 
 projects:
     # HIC bootloaders and all target interfaces
@@ -602,7 +606,10 @@ projects:
         - *module_if
         - *module_hic_stm32f103xb
         - records/board/ublox_evk_odin_w2.yaml
-
+    ingchips_ing916_if:
+        - *module_if
+        - *module_hic_ing91682a
+        - records/board/ing91682a.yaml
 
     # Test projects
     lpc55s69_nrf52840dk_test_if:

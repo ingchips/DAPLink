@@ -30,8 +30,8 @@ cd %~dp0..\
 	@echo UV4 variable is not set, trying to autodetect..
 	if EXIST c:\keil\uv4\uv4.exe (
 		set UV4=c:\keil\uv4\uv4.exe
-	) else if EXIST c:\keil_v5\uv4\uv4.exe (
-		set UV4=c:\keil_v5\uv4\uv4.exe
+	) else if EXIST D:\keil_v5\uv4\uv4.exe (
+		set UV4=D:\keil_v5\uv4\uv4.exe
 	) else goto error_nomdk
 )
 @echo USING UV4=%UV4%

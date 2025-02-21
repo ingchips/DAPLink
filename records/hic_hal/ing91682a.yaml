@@ -1,0 +1,50 @@
+common:
+    target:
+        - Cortex-M4
+    core:
+        - Cortex-M4
+    macros:
+        - INTERFACE_ING91682A
+        - DAPLINK_HIC_ID=0x97969922
+        - OS_CLOCK=96000000
+        - __DAPLINK
+        - USE_STDPERIPH_DRIVER
+    includes:
+        - source/hic_hal/ingchips/ing91682a
+        - source/hic_hal/ingchips/ing91682a/src/Tools
+        - source/hic_hal/ingchips/ing91682a/src/BSP
+        - source/hic_hal/ingchips/ing91682a/src/FWlib
+        - source/hic_hal/ingchips/ing91682a/src/StartUP
+        - source/hic_hal/ingchips/ing91682a/src/StartUP/ing916
+        - source/hic_hal/ingchips/ing91682a/src/StartUP/ing916
+        - source/hic_hal/ingchips/ing91682a/VenusFTO_Validation_common
+        - source/hic_hal/ingchips/ing91682a/VenusFTO_Validation_common/registers
+    sources:
+        hic_hal:
+            - source/hic_hal/ingchips/ing91682a
+            - source/hic_hal/ingchips/ing91682a/src/BSP
+            - source/hic_hal/ingchips/ing91682a/src/FWlib
+
+tool_specific:
+    uvision:
+        misc:
+            ld_flags:
+                - --predefine="-I..\..\..\source\hic_hal\ingchips\ing91682a"
+        sources:
+            hic_hal:
+                - source/hic_hal/ingchips/ing91682a/armcc
+    armcc:
+        sources:
+            hic_hal:
+                - source/hic_hal/ingchips/ing91682a/armcc
+    armclang:
+        misc:
+            common_flags:
+                - -mfpu=none
+        sources:
+            hic_hal:
+                - source/hic_hal/ingchips/ing91682a/armcc
+    gcc_arm:
+        sources:
+            hic_hal:
+                

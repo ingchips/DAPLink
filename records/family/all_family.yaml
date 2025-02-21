@@ -10,3 +10,4 @@ common:
             - source/family/realtek/target_reset_realtek_rtl8195am.c
             - source/family/toshiba/target_reset_tz.c
             - source/family/renesas/target_reset_rza.c
+            - source/family/ingchips/target_reset_ing916.c
