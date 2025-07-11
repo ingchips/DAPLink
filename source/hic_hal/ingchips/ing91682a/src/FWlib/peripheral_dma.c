@@ -123,6 +123,7 @@ static volatile void *DMA_GetPeripheralDataAddr(SYSCTRL_DMA src)
     }
 }
 
+
 int DMA_PreparePeripheral2Mem(DMA_Descriptor *pDesc,
                                         uint32_t *dst, SYSCTRL_DMA src, int size,
                                         DMA_AddressControl dst_addr_ctrl,

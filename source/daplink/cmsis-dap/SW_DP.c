@@ -94,6 +94,7 @@ __WEAK void SWJ_Sequence (uint32_t count, const uint8_t *data) {
 #endif
 
 
+
 // Generate SWD Sequence
 //   info:   sequence information
 //   swdo:   pointer to SWDIO generated data

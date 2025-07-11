@@ -18,8 +18,19 @@ static uint32_t ClkFreq; //0:16M 1:24M
 
 #include "eflash.inc"
 
+static uint32_t prim_irq;
+
+#define FLASH_PRE_OPS()                     \
+    prim_irq = __get_PRIMASK();             \
+    __disable_irq();
+
+#define FLASH_POST_OPS()                    \
+    if (!prim_irq) __enable_irq()
+
 static void init(void)
 {
+    FLASH_PRE_OPS();
+
     ClkFreq = (*(uint32_t *)RTC_CHIP_STAT_ADDR >> CLK_FREQ_STAT_POS) & 0x1;
     EflashCacheBypass();
     EflashBaseTime();
@@ -32,6 +43,8 @@ static void uninit()
 {
     EflashCacheEna();
     EflashCacheFlush();
+    
+    FLASH_POST_OPS();
 }
 
 int program_flash0(const uint32_t dest_addr, const uint8_t *buffer, uint32_t size, int erase)
@@ -115,7 +128,10 @@ int program_flash(const uint32_t dest_addr, const uint8_t *buffer, uint32_t size
 
 int write_flash(const uint32_t dest_addr, const uint8_t *buffer, uint32_t size)
 {
-    return program_flash0(dest_addr, buffer, size, 0);
+    int r = program_flash0(dest_addr, buffer, size, 0);
+    if (r != 0) return r;
+    r = memcmp((const void *)dest_addr, buffer, size) == 0 ? 0 : 2;
+    return r;
 }
 
 int program_fota_metadata(const uint32_t entry, const int block_num, const fota_update_block_t *blocks)
@@ -167,13 +183,36 @@ int program_fota_metadata(const uint32_t entry, const int block_num, const fota_
 #elif (INGCHIPS_FAMILY == INGCHIPS_FAMILY_916)
 
 #include "rom_tools.h"
+#include "peripheral_sysctrl.h"
 
-typedef void (*rom_FlashWaitBusyDown)(void);
-typedef void (*rom_FlashDisableContinuousMode)(void);
-typedef void (*rom_FlashEnableContinuousMode)(void);
-#define ROM_FlashWaitBusyDown           ((rom_FlashWaitBusyDown)          (0x00000b6d))
-#define ROM_FlashDisableContinuousMode  ((rom_FlashDisableContinuousMode) (0x000007c9))
-#define ROM_FlashEnableContinuousMode   ((rom_FlashEnableContinuousMode)  (0x0000080d))
+typedef void (* f_erase_sector)(uint32_t addr);
+typedef void (* f_void)(void);
+typedef void (* f_prog_page)(uint32_t addr, const uint8_t data[256], uint32_t len);
+
+typedef int (* f_program_flash)(const uint32_t dest_addr, const uint8_t *buffer, uint32_t size);
+typedef int (* f_write_flash)(const uint32_t dest_addr, const uint8_t *buffer, uint32_t size);
+typedef int (* f_flash_do_update)(const int block_num, const fota_update_block_t *blocks, uint8_t *ram_buffer);
+
+#define ROM_program_flash               ((f_program_flash)0x00003b9b)
+#define ROM_write_flash                 ((f_write_flash)0x00003cff)
+#define ROM_flash_do_update             ((f_flash_do_update)0x00001d73)
+
+typedef void (*rom_void_void)(void);
+#define ROM_FlashWaitBusyDown           ((rom_void_void)(0x00000b6d))
+#define ROM_FlashDisableContinuousMode  ((rom_void_void)(0x000007c9))
+#define ROM_FlashEnableContinuousMode   ((rom_void_void)(0x0000080d))
+#define ROM_DCacheFlush                 ((rom_void_void)(0x00000651))
+
+typedef void (*rom_prog_page)(uint32_t addr, const uint8_t *data, uint32_t len);
+#define ROM_ProgPage                    ((rom_prog_page)(0x00003cd7))
+
+typedef void (*rom_FlashSetStatusReg)(uint16_t data);
+#define ROM_FlashSetStatusReg           ((rom_FlashSetStatusReg)(0x00000b01))
+
+typedef uint16_t (*rom_FlashGetStatusReg)(void);
+#define ROM_FlashGetStatusReg           ((rom_FlashGetStatusReg)(0x0000084d))
+
+static void flash_read_protection_status(uint8_t *region, uint8_t *reverse_selection);
 
 int erase_flash_sector(const uint32_t addr)
 {
@@ -186,21 +225,51 @@ int program_flash(uint32_t dest_addr, const uint8_t *buffer, uint32_t size)
     return ROM_program_flash(dest_addr, buffer, size);
 }
 
-int write_flash(uint32_t dest_addr, const uint8_t *buffer, uint32_t size)
+#define FLASH_PRE_OPS()                     \
+    uint32_t prim = __get_PRIMASK();        \
+    __disable_irq();                        \
+    ROM_FlashDisableContinuousMode();
+
+#define FLASH_POST_OPS()                    \
+    ROM_DCacheFlush();                      \
+    ROM_FlashEnableContinuousMode();        \
+    if (!prim) __enable_irq()
+
+int write_flash0(uint32_t dest_addr, const uint8_t *buffer, uint32_t size)
 {
     uint32_t next_page = (dest_addr & (~((uint32_t)EFLASH_PAGE_SIZE - 1))) + EFLASH_PAGE_SIZE;
-    while (size > 0)
+    uint32_t i;
+    for (i = 0; i < size; i++)
     {
-        uint32_t block = next_page - dest_addr;
-        if (block >= size) block = size;
-        int r = ROM_write_flash(dest_addr, buffer, block);
-        if (r) return r;
-        dest_addr += block;
-        buffer += block;
-        size -= block;
-        next_page += EFLASH_PAGE_SIZE;
+        if ((*(const uint8_t *)(dest_addr + i) & buffer[i]) != buffer[i])
+            return 1;
     }
+
+    FLASH_PRE_OPS();
+    {
+        while (size > 0)
+        {
+            uint32_t block = next_page - dest_addr;
+            if (block >= size) block = size;
+
+            ROM_ProgPage(dest_addr, buffer, block);
+
+            dest_addr += block;
+            buffer += block;
+            size -= block;
+            next_page += EFLASH_PAGE_SIZE;
+        }
+    }
+    FLASH_POST_OPS();
     return 0;
+}
+
+int write_flash(uint32_t dest_addr, const uint8_t *buffer, uint32_t size)
+{
+    int r = write_flash0(dest_addr, buffer, size);
+    if (r != 0) return r;
+    r = memcmp((const void *)dest_addr, buffer, size) == 0 ? 0 : 2;
+    return r;
 }
 
 int flash_do_update(const int block_num, const fota_update_block_t *blocks, uint8_t *page_buffer)
@@ -246,15 +315,36 @@ __attribute__((naked)) static uint32_t security_page_read(uint32_t addr, uint32_
 }
 #endif
 
-uint32_t read_flash_security(uint32_t addr)
+static uint32_t read_flash_security0(uint32_t addr, void *prog)
 {
     uint32_t ret;
-    uint32_t prog[sizeof(prog_security_page_read) / 4];
-    memcpy(prog, prog_security_page_read, sizeof(prog));
-    ROM_FlashDisableContinuousMode();
-    ret = security_page_read(addr, (uint32_t)prog);
-    ROM_FlashEnableContinuousMode();
+    memcpy(prog, prog_security_page_read, sizeof(prog_security_page_read));
+    FLASH_PRE_OPS();
+    {
+        ret = security_page_read(addr, (uint32_t)prog);
+    }
+    FLASH_POST_OPS();
     return ret;
+}
+
+uint32_t read_flash_security(uint32_t addr)
+{
+    uint32_t prog[sizeof(prog_security_page_read) / 4];
+    if ((uintptr_t)prog < 0x40000000)
+    {
+        return read_flash_security0(addr, prog);
+    }
+    else
+    {
+        uint32_t ret;
+        void *prog2 = (void *)SYSCTRL_I_CACHE_AS_MEM_BASE_ADDR;
+        SYSCTRL_ICacheControl(SYSCTRL_MEM_BLOCK_AS_SYS_MEM);
+        {
+            ret = read_flash_security0(addr, prog2);
+        }
+        SYSCTRL_ICacheControl(SYSCTRL_MEM_BLOCK_AS_CACHE);
+        return ret;
+    }
 }
 
 #define FACTORY_DATA_LOC    (0x02000000 + 0x1000)
@@ -270,13 +360,42 @@ typedef struct
 } factory_data_t;
 #pragma pack (pop)
 
+#define EXTRA_DATA_LEN      332
+#define FT_CHECK_LEN        (((sizeof(factory_data_t) + EXTRA_DATA_LEN) + 3) & ~4)
+#define FT_CEHCKSUM_OFFSET  FT_CHECK_LEN
+
+static uint32_t calc_checksum_32(const uint32_t* data, uint32_t length)
+{
+    uint32_t sum = 0;
+    while(length--)
+        sum += *data++;
+    return sum;
+}
+
+static uint32_t calc_ft_sum()
+{
+    return calc_checksum_32((uint32_t *)FACTORY_DATA_LOC, FT_CHECK_LEN >> 2);
+}
+
+static uint32_t get_ft_sum()
+{
+    return *(uint32_t*)(FACTORY_DATA_LOC + FT_CEHCKSUM_OFFSET);
+}
+
+static void write_ft_sum()
+{
+    uint32_t checksum = calc_ft_sum();
+    write_flash(FACTORY_DATA_LOC + FT_CEHCKSUM_OFFSET, (uint8_t *)&checksum, sizeof(uint32_t));
+}
+
 static int is_data_ready(void)
 {
     const die_info_t *p = (const die_info_t *)FACTORY_DATA_LOC;
-    if ((p->cid[0] == MAGIC_0) && (p->cid[1] == MAGIC_1))
-        return 1;
-    else
+    if ((p->cid[0] != MAGIC_0) || (p->cid[1] != MAGIC_1))
         return 0;
+    if (get_ft_sum() != calc_ft_sum())
+        return 0;
+    return 1;
 }
 
 static void copy_security_data(uint32_t dst, uintptr_t src, int word_len)
@@ -299,25 +418,34 @@ static void copy_security_data(uint32_t dst, uintptr_t src, int word_len)
 
 int flash_prepare_factory_data(void)
 {
-    return 0;
     if (is_data_ready()) return 0;
     uint32_t t = read_flash_security(0x1000);
     if (t != MAGIC_0) return 1;
     t = read_flash_security(0x1004);
     if (t != MAGIC_1) return 2;
+    
+    uint8_t region;
+    uint8_t reverse_selection;
+    flash_read_protection_status(&region, &reverse_selection);
+    flash_enable_write_protection(FLASH_REGION_NONE, 0);
+    
     erase_flash_sector(FACTORY_DATA_LOC);
     copy_security_data(FACTORY_DATA_LOC,
         0x1000, sizeof(die_info_t) / 4);
     copy_security_data(FACTORY_DATA_LOC + sizeof(die_info_t),
         0x1100, sizeof(factory_calib_data_t) / 4);
     copy_security_data(FACTORY_DATA_LOC + sizeof(factory_data_t),
-        0x2000, 320 / 4);
+        0x2000, EXTRA_DATA_LEN / 4);
+    write_ft_sum();
+    
+    flash_enable_write_protection(region, reverse_selection);
+    
     return 0;
 }
 
 const die_info_t *flash_get_die_info(void)
 {
-    if (is_data_ready())
+    if (flash_prepare_factory_data() == 0)
         return &((const factory_data_t *)FACTORY_DATA_LOC)->die_info;
     else
         return NULL;
@@ -325,7 +453,7 @@ const die_info_t *flash_get_die_info(void)
 
 const factory_calib_data_t *flash_get_factory_calib_data(void)
 {
-    if (is_data_ready())
+    if (flash_prepare_factory_data() == 0)
         return &((const factory_data_t *)FACTORY_DATA_LOC)->calib;
     else
         return NULL;
@@ -333,10 +461,47 @@ const factory_calib_data_t *flash_get_factory_calib_data(void)
 
 const void *flash_get_adc_calib_data(void)
 {
-    if (is_data_ready())
+    if (flash_prepare_factory_data() == 0)
         return (const void *)(FACTORY_DATA_LOC + sizeof(factory_data_t));
     else
         return NULL;
+}
+
+static void flash_read_protection_status(uint8_t *region, uint8_t *reverse_selection)
+{
+    FLASH_PRE_OPS();
+    {
+        uint16_t status = ROM_FlashGetStatusReg();
+        *reverse_selection = ((status >> 14) & 1ul);
+        *region = (0x1ful & (status >> 2));
+    }
+    FLASH_POST_OPS();
+}
+
+void flash_enable_write_protection(flash_region_t region, uint8_t reverse_selection)
+{
+    FLASH_PRE_OPS();
+    {
+        uint16_t status = ROM_FlashGetStatusReg();
+        uint16_t old_status = status;
+        status &= ~((1ul << 14) | (0x1ful << 2));
+        status |= (uint16_t)reverse_selection << 14 | ((uint16_t)region << 2);
+        if (old_status != status)
+           ROM_FlashSetStatusReg(status);
+    }
+    FLASH_POST_OPS();
+}
+
+typedef void (* rom_FlashRUID)(uint32_t *UID);
+#define ROM_FlashRUID  ((rom_FlashRUID) (0x00000a41))
+
+void flash_read_uid(uint32_t uid[4])
+{
+    FLASH_PRE_OPS();
+    {
+        ROM_FlashRUID(uid);
+    }
+    FLASH_POST_OPS();
 }
 
 #endif

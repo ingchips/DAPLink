@@ -63,6 +63,10 @@ uint8_t circ_buf_pop(circ_buf_t *circ_buf)
     state = cortex_int_get_and_disable();
 
     // Assert buffer isn't empty
+//    if(circ_buf->head == circ_buf->tail)
+//    {
+//        printf("error\n");
+//    }
     util_assert(circ_buf->head != circ_buf->tail);
 
     data = circ_buf->buf[circ_buf->head];

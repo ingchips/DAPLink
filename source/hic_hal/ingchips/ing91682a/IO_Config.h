@@ -29,6 +29,8 @@
 #include "daplink.h"
 #include "soc.h"
 
+#define SPI_ENABLE  1
+
 // This GPIO configuration is only valid for the ING91682A HIC
 COMPILER_ASSERT(DAPLINK_HIC_ID == DAPLINK_HIC_ID_ING91682A);
 

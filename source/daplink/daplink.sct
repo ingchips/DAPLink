@@ -35,7 +35,7 @@ LR_IROM1 DAPLINK_ROM_APP_START DAPLINK_ROM_APP_SIZE {
    .ANY (+RW +ZI)
    main_*.o (+RW +ZI)
    startup_*.o (+RW +ZI)
-   .ANY (RAM1)
+;   .ANY (RAM1)
   }
 
   #if defined(DAPLINK_RAM_APP2_START)

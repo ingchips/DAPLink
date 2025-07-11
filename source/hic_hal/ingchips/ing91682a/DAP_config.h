@@ -42,7 +42,7 @@ This information includes:
 
 /// Processor Clock of the Cortex-M MCU used in the Debug Unit.
 /// This value is used to calculate the SWD/JTAG clock speed.
-#define CPU_CLOCK               SystemCoreClock        ///< Specifies the CPU Clock in Hz
+#define CPU_CLOCK               (SystemCoreClock/10)        ///< Specifies the CPU Clock in Hz
 
 /// Number of processor cycles for I/O Port write operations.
 /// This value is used to calculate the SWD/JTAG clock speed that is generated with I/O
@@ -50,7 +50,7 @@ This information includes:
 /// require 2 processor cycles for a I/O Port Write operation.  If the Debug Unit uses
 /// a Cortex-M0+ processor with high-speed peripheral I/O only 1 processor cycle might be
 /// required.
-#define IO_PORT_WRITE_CYCLES    2U              ///< I/O Cycles: 2=default, 1=Cortex-M0+ fast I/0
+#define IO_PORT_WRITE_CYCLES    1U              ///< I/O Cycles: 2=default, 1=Cortex-M0+ fast I/0
 
 /// Indicate that Serial Wire Debug (SWD) communication mode is available at the Debug Access Port.
 /// This information is returned by the command \ref DAP_Info as part of <b>Capabilities</b>.
@@ -81,7 +81,7 @@ This information includes:
 /// Default communication speed on the Debug Access Port for SWD and JTAG mode.
 /// Used to initialize the default SWD/JTAG clock frequency.
 /// The command \ref DAP_SWJ_Clock can be used to overwrite this default setting.
-#define DAP_DEFAULT_SWJ_CLOCK   5000000         ///< Default SWD/JTAG clock frequency in Hz.
+#define DAP_DEFAULT_SWJ_CLOCK   10000000         ///< Default SWD/JTAG clock frequency in Hz.
 
 /// Maximum Package Size for Command and Response data.
 /// This configuration settings is used to optimize the communication performance with the
@@ -93,7 +93,7 @@ This information includes:
 /// This configuration settings is used to optimize the communication performance with the
 /// debugger and depends on the USB peripheral. For devices with limited RAM or USB buffer the
 /// setting can be reduced (valid range is 1 .. 255). Change setting to 4 for High-Speed USB.
-#define DAP_PACKET_COUNT        1              ///< Buffers: 64 = Full-Speed, 4 = High-Speed.
+#define DAP_PACKET_COUNT        19              ///< Buffers: 64 = Full-Speed, 4 = High-Speed.
 
 /// Indicate that UART Serial Wire Output (SWO) trace is available.
 /// This information is returned by the command \ref DAP_Info as part of <b>Capabilities</b>.
@@ -110,7 +110,7 @@ This information includes:
 #define SWO_MANCHESTER          0               ///< SWO Manchester:  1 = available, 0 = not available.
 
 /// SWO Trace Buffer Size.
-#define SWO_BUFFER_SIZE         4096U           ///< SWO Trace Buffer Size in bytes (must be 2^n).
+#define SWO_BUFFER_SIZE         512U           ///< SWO Trace Buffer Size in bytes (must be 2^n).
 
 /// SWO Streaming Trace.
 #define SWO_STREAM              0               ///< SWO Streaming Trace: 1 = available, 0 = not available.
@@ -127,10 +127,10 @@ This information includes:
 #define DAP_UART_DRIVER         1               ///< USART Driver instance number (Driver_USART#).
 
 /// UART Receive Buffer Size.
-#define DAP_UART_RX_BUFFER_SIZE 1024U           ///< Uart Receive Buffer Size in bytes (must be 2^n).
+#define DAP_UART_RX_BUFFER_SIZE 4096U           ///< Uart Receive Buffer Size in bytes (must be 2^n).
 
 /// UART Transmit Buffer Size.
-#define DAP_UART_TX_BUFFER_SIZE 1024U           ///< Uart Transmit Buffer Size in bytes (must be 2^n).
+#define DAP_UART_TX_BUFFER_SIZE 4096U           ///< Uart Transmit Buffer Size in bytes (must be 2^n).
 
 /// Indicate that UART Communication via USB COM Port is available.
 /// This information is returned by the command \ref DAP_Info as part of <b>Capabilities</b>.
@@ -194,7 +194,6 @@ __STATIC_INLINE void PORT_JTAG_SETUP(void)
 
 #endif
 }
-
 /** Setup SWD I/O pins: SWCLK, SWDIO, and nRESET.
 Configures the DAP Hardware I/O pins for Serial Wire Debug (SWD) mode:
  - SWCLK, SWDIO, nRESET to output mode and set to default high level.
@@ -202,7 +201,6 @@ Configures the DAP Hardware I/O pins for Serial Wire Debug (SWD) mode:
 */
 __STATIC_INLINE void PORT_SWD_SETUP(void)
 {
-
 //    SYSCTRL_ClearClkGateMulti(  (1 << SYSCTRL_ITEM_APB_SysCtrl)
 //                                    | (1 << SYSCTRL_ITEM_APB_PinCtrl)
 //                                    | (1 << SYSCTRL_ITEM_APB_GPIO1)
@@ -210,14 +208,30 @@ __STATIC_INLINE void PORT_SWD_SETUP(void)
                                 
     // Set SWCLK HIGH
 //    PINCTRL_SetPadMux(SWCLK_PIN, IO_SOURCE_GPIO);
-    GIO_SetDirection(SWCLK_PIN, GIO_DIR_OUTPUT);
-    GIO_WriteValue(SWCLK_PIN, 1);
+    // GIO_SetDirection(SWCLK_PIN, GIO_DIR_OUTPUT);
+    // GIO_WriteValue(SWCLK_PIN, 1);
     
     // Set SWDIO HIGH
 //    PINCTRL_SetPadMux(SWDIO_PIN, IO_SOURCE_GPIO);
-    GIO_SetDirection(SWDIO_PIN, GIO_DIR_BOTH);
-    PINCTRL_Pull(SWDIO_PIN, PINCTRL_PULL_UP);
-    GIO_WriteValue(SWDIO_PIN, 1);
+    // GIO_SetDirection(SWDIO_PIN, GIO_DIR_BOTH);
+    // PINCTRL_Pull(SWDIO_PIN, PINCTRL_PULL_UP);
+    // GIO_WriteValue(SWDIO_PIN, 1);
+
+    #if (!SPI_ENABLE)
+    uint32_t mask = 1 << SWCLK_PIN;
+    APB_GPIO0->ChDir = (APB_GPIO0->ChDir & (~mask)) | (1 << SWCLK_PIN);
+    APB_GPIO0->IOIE = (APB_GPIO0->IOIE & (~mask)) | (0 << SWCLK_PIN);
+    APB_GPIO0->DoutSet |= 1 << SWCLK_PIN;
+
+    mask = 1 << SWDIO_PIN;
+    APB_GPIO0->ChDir = (APB_GPIO0->ChDir & (~mask)) | (1 << SWDIO_PIN);
+    APB_GPIO0->IOIE = (APB_GPIO0->IOIE & (~mask)) | (1 << SWDIO_PIN);
+    APB_GPIO0->DoutSet |= 1 << SWDIO_PIN;
+
+    int bit = 1ul << (SWDIO_PIN & 0x1f);
+    APB_PINCTRL->PS_CTRL[0] |= bit;
+    APB_PINCTRL->PE_CTRL[0] |= bit;
+    #endif
 
 }
 
@@ -227,16 +241,33 @@ Disables the DAP Hardware I/O pins which configures:
 */
 __STATIC_INLINE void PORT_OFF(void)
 {
-//    PINCTRL_SetPadMux(SWCLK_PIN, IO_SOURCE_GENERAL);
-    GIO_SetDirection(SWCLK_PIN, GIO_DIR_INPUT);
+    uint32_t mask = 1 << SWCLK_PIN;
+    #if (!SPI_ENABLE)
+    APB_GPIO0->ChDir = (APB_GPIO0->ChDir & (~mask)) | (0 << SWCLK_PIN);
+    APB_GPIO0->IOIE = (APB_GPIO0->IOIE & (~mask)) | (1 << SWCLK_PIN);
 
-//    PINCTRL_SetPadMux(SWDIO_PIN, IO_SOURCE_GENERAL);
-    GIO_SetDirection(SWDIO_PIN, GIO_DIR_INPUT);
+    mask = 1 << SWDIO_PIN;
+    APB_GPIO0->ChDir = (APB_GPIO0->ChDir & (~mask)) | (0 << SWDIO_PIN);
+    APB_GPIO0->IOIE = (APB_GPIO0->IOIE & (~mask)) | (1 << SWDIO_PIN);
+    #endif
 
     #ifdef nRESET_PIN
-//    PINCTRL_SetPadMux(nRESET_PIN, IO_SOURCE_GENERAL);
-    GIO_SetDirection(nRESET_PIN, GIO_DIR_INPUT);
+    mask = 1 << nRESET_PIN;
+    APB_GPIO0->ChDir = (APB_GPIO0->ChDir & (~mask)) | (0 << nRESET_PIN);
+    APB_GPIO0->IOIE = (APB_GPIO0->IOIE & (~mask)) | (1 << nRESET_PIN);
     #endif
+
+
+//    PINCTRL_SetPadMux(SWCLK_PIN, IO_SOURCE_GENERAL);
+    // GIO_SetDirection(SWCLK_PIN, GIO_DIR_INPUT);
+
+//    PINCTRL_SetPadMux(SWDIO_PIN, IO_SOURCE_GENERAL);
+    // GIO_SetDirection(SWDIO_PIN, GIO_DIR_INPUT);
+
+    // #ifdef nRESET_PIN
+//    PINCTRL_SetPadMux(nRESET_PIN, IO_SOURCE_GENERAL);
+    // GIO_SetDirection(nRESET_PIN, GIO_DIR_INPUT);
+    // #endif
 }
 
 
@@ -247,7 +278,13 @@ __STATIC_INLINE void PORT_OFF(void)
 */
 __STATIC_FORCEINLINE uint32_t PIN_SWCLK_TCK_IN(void)
 {
-    return GIO_ReadValue(SWCLK_PIN);
+    // return GIO_ReadValue(SWCLK_PIN);
+    
+    #if (!SPI_ENABLE)
+    return (APB_GPIO0->DataIn >> SWCLK_PIN) & 1;
+    #else
+    return (0);   // Not available
+    #endif
 }
 
 /** SWCLK/TCK I/O pin: Set Output to High.
@@ -255,7 +292,11 @@ Set the SWCLK/TCK DAP hardware I/O pin to high level.
 */
 __STATIC_FORCEINLINE void     PIN_SWCLK_TCK_SET(void)
 {
-    GIO_WriteValue(SWCLK_PIN, 1);
+    // GIO_WriteValue(SWCLK_PIN, 1);
+    
+    #if (!SPI_ENABLE)
+    APB_GPIO0->DoutSet |= 1 << SWCLK_PIN;
+    #endif
 }
 
 /** SWCLK/TCK I/O pin: Set Output to Low.
@@ -263,7 +304,11 @@ Set the SWCLK/TCK DAP hardware I/O pin to low level.
 */
 __STATIC_FORCEINLINE void     PIN_SWCLK_TCK_CLR(void)
 {
-    GIO_WriteValue(SWCLK_PIN, 0);
+    // GIO_WriteValue(SWCLK_PIN, 0);
+    
+    #if (!SPI_ENABLE)
+    APB_GPIO0->DoutClear |= 1 << SWCLK_PIN;
+    #endif
 }
 
 
@@ -274,7 +319,13 @@ __STATIC_FORCEINLINE void     PIN_SWCLK_TCK_CLR(void)
 */
 __STATIC_FORCEINLINE uint32_t PIN_SWDIO_TMS_IN(void)
 {
-    return GIO_ReadValue(SWDIO_PIN);
+    // return GIO_ReadValue(SWDIO_PIN);
+    
+    #if (!SPI_ENABLE)
+    return (APB_GPIO0->DataIn >> SWDIO_PIN) & 1;
+    #else
+    return (0);   // Not available
+    #endif
 }
 
 /** SWDIO/TMS I/O pin: Set Output to High.
@@ -282,7 +333,11 @@ Set the SWDIO/TMS DAP hardware I/O pin to high level.
 */
 __STATIC_FORCEINLINE void     PIN_SWDIO_TMS_SET(void)
 {
-    GIO_WriteValue(SWDIO_PIN, 1);
+    // GIO_WriteValue(SWDIO_PIN, 1);
+    
+    #if (!SPI_ENABLE)
+    APB_GPIO0->DoutSet |= 1 << SWDIO_PIN;
+    #endif
 }
 
 /** SWDIO/TMS I/O pin: Set Output to Low.
@@ -290,7 +345,11 @@ Set the SWDIO/TMS DAP hardware I/O pin to low level.
 */
 __STATIC_FORCEINLINE void     PIN_SWDIO_TMS_CLR(void)
 {
-    GIO_WriteValue(SWDIO_PIN, 0);
+    // GIO_WriteValue(SWDIO_PIN, 0);
+    
+    #if (!SPI_ENABLE)
+    APB_GPIO0->DoutClear |= 1 << SWDIO_PIN;
+    #endif
 }
 
 /** SWDIO I/O pin: Get Input (used in SWD mode only).
@@ -298,19 +357,33 @@ __STATIC_FORCEINLINE void     PIN_SWDIO_TMS_CLR(void)
 */
 __STATIC_FORCEINLINE uint32_t PIN_SWDIO_IN(void)
 {
-    return GIO_ReadValue(SWDIO_PIN);
+    // return GIO_ReadValue(SWDIO_PIN);
+    
+    #if (!SPI_ENABLE)
+    return (APB_GPIO0->DataIn >> SWDIO_PIN) & 1;
+    #else
+    return (0);   // Not available
+    #endif
 }
 
 /** SWDIO I/O pin: Set Output (used in SWD mode only).
 \param bit Output value for the SWDIO DAP hardware I/O pin.
 */
-__STATIC_FORCEINLINE void     PIN_SWDIO_OUT(uint32_t bit)
+__STATIC_FORCEINLINE void PIN_SWDIO_OUT(uint32_t bit)
 {
+    #if (!SPI_ENABLE)
     if (bit & 0x1) {
-        GIO_WriteValue(SWDIO_PIN, 1);
+        APB_GPIO0->DoutSet |= 1 << SWDIO_PIN;
+        
+        
+        // GIO_WriteValue(SWDIO_PIN, 1);
     } else {
-        GIO_WriteValue(SWDIO_PIN, 0);
+        APB_GPIO0->DoutClear |= 1 << SWDIO_PIN;
+        
+        
+        // GIO_WriteValue(SWDIO_PIN, 0);
     }
+    #endif
 }
 
 /** SWDIO I/O pin: Switch to Output mode (used in SWD mode only).
@@ -320,8 +393,15 @@ called prior \ref PIN_SWDIO_OUT function calls.
 __STATIC_FORCEINLINE void     PIN_SWDIO_OUT_ENABLE(void)
 {
 //    PINCTRL_SetPadMux(SWDIO_PIN, IO_SOURCE_GENERAL);
-    GIO_SetDirection(SWDIO_PIN, GIO_DIR_BOTH);
-    GIO_WriteValue(SWDIO_PIN, 1);
+    // GIO_SetDirection(SWDIO_PIN, GIO_DIR_BOTH);
+    // GIO_WriteValue(SWDIO_PIN, 1);
+
+    #if (!SPI_ENABLE)
+    uint32_t mask = 1 << SWDIO_PIN;
+    APB_GPIO0->ChDir = (APB_GPIO0->ChDir & (~mask)) | (1 << SWDIO_PIN);
+    APB_GPIO0->IOIE = (APB_GPIO0->IOIE & (~mask)) | (1 << SWDIO_PIN);
+    APB_GPIO0->DoutSet |= 1 << SWDIO_PIN;
+    #endif
 }
 
 /** SWDIO I/O pin: Switch to Input mode (used in SWD mode only).
@@ -331,8 +411,19 @@ called prior \ref PIN_SWDIO_IN function calls.
 __STATIC_FORCEINLINE void     PIN_SWDIO_OUT_DISABLE(void)
 {
 //    PINCTRL_SetPadMux(SWDIO_PIN, IO_SOURCE_GENERAL);
-    GIO_SetDirection(SWDIO_PIN, GIO_DIR_INPUT);
-    PINCTRL_Pull(SWDIO_PIN, PINCTRL_PULL_UP);
+    // GIO_SetDirection(SWDIO_PIN, GIO_DIR_INPUT);
+    // PINCTRL_Pull(SWDIO_PIN, PINCTRL_PULL_UP);
+    
+    
+    #if (!SPI_ENABLE)
+    uint32_t mask = 1 << SWDIO_PIN;
+    APB_GPIO0->ChDir = (APB_GPIO0->ChDir & (~mask)) | (0 << SWDIO_PIN);
+    APB_GPIO0->IOIE = (APB_GPIO0->IOIE & (~mask)) | (1 << SWDIO_PIN);
+
+    int bit = 1ul << (SWDIO_PIN & 0x1f);
+    APB_PINCTRL->PS_CTRL[0] |= bit;
+    APB_PINCTRL->PE_CTRL[0] |= bit;
+    #endif
 }
 
 
@@ -405,12 +496,19 @@ __STATIC_FORCEINLINE uint32_t PIN_nRESET_IN(void)
 #include "IO_Config.h"
 __STATIC_FORCEINLINE void     PIN_nRESET_OUT(uint32_t bit)
 {
+    swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
     #ifdef nRESET_PIN
     // FET drive logic
     if (bit) {
-        GIO_WriteValue(nRESET_PIN, 1);
+        // GIO_WriteValue(nRESET_PIN, 1);
+        
+        
+        APB_GPIO0->DoutSet |= 1 << nRESET_PIN;
     } else {
-        GIO_WriteValue(nRESET_PIN, 0);
+        // GIO_WriteValue(nRESET_PIN, 0);
+        
+        
+        APB_GPIO0->DoutClear |= 1 << nRESET_PIN;
     }
     #else
     swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
@@ -441,9 +539,11 @@ It is recommended to provide the following LEDs for status indication:
 __STATIC_INLINE void LED_CONNECTED_OUT(uint32_t bit)
 {
     if (bit) {
-        GIO_WriteValue(LED_CONNECTED_PIN, 1);
+        // GIO_WriteValue(LED_CONNECTED_PIN, 1);
+        APB_GPIO0->DoutSet |= 1 << LED_CONNECTED_PIN;
     } else {
-        GIO_WriteValue(LED_CONNECTED_PIN, 0);
+        // GIO_WriteValue(LED_CONNECTED_PIN, 0);
+        APB_GPIO0->DoutClear |= 1 << LED_CONNECTED_PIN;
     }
 }
 
@@ -456,9 +556,11 @@ __STATIC_INLINE void LED_RUNNING_OUT(uint32_t bit)
 {
     #if 0
     if (bit) {
-        GIO_WriteValue(LED_RUNNING_PIN, 1);
+        // GIO_WriteValue(LED_RUNNING_PIN, 1);
+        APB_GPIO0->DoutSet |= 1 << LED_RUNNING_PIN;
     } else {
-        GIO_WriteValue(LED_RUNNING_PIN, 0);
+        // GIO_WriteValue(LED_RUNNING_PIN, 0);
+        APB_GPIO0->DoutClear |= 1 << LED_RUNNING_PIN;
     }
     #endif
 }
@@ -507,6 +609,7 @@ Status LEDs. In detail the operation of Hardware I/O and LED pins are enabled an
 */
 __STATIC_INLINE void DAP_SETUP(void)
 {
+    uint32_t mask = 1 << LED_CONNECTED_PIN;
     SYSCTRL_ClearClkGateMulti(  (1 << SYSCTRL_ITEM_APB_SysCtrl)
                                     | (1 << SYSCTRL_ITEM_APB_PinCtrl)
                                     | (1 << SYSCTRL_ITEM_APB_GPIO1)
@@ -514,8 +617,12 @@ __STATIC_INLINE void DAP_SETUP(void)
                                 
 
 //    PINCTRL_SetPadMux(LED_CONNECTED_PIN, IO_SOURCE_GENERAL);
-    GIO_SetDirection(LED_CONNECTED_PIN, GIO_DIR_OUTPUT);
-    GIO_WriteValue(LED_CONNECTED_PIN, 0);
+
+    APB_GPIO0->ChDir = (APB_GPIO0->ChDir & (~mask)) | (1 << LED_CONNECTED_PIN);
+    APB_GPIO0->IOIE = (APB_GPIO0->IOIE & (~mask)) | (0 << LED_CONNECTED_PIN);
+    APB_GPIO0->DoutClear |= 1 << LED_CONNECTED_PIN;
+    // GIO_SetDirection(LED_CONNECTED_PIN, GIO_DIR_OUTPUT);
+    // GIO_WriteValue(LED_CONNECTED_PIN, 0);
     
     #if LED_RUNNING_PIN
 //    PINCTRL_SetPadMux(LED_RUNNING_PIN, IO_SOURCE_GENERAL);

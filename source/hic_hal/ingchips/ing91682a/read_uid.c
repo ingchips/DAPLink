@@ -25,13 +25,17 @@
 void read_unique_id(uint32_t *id)
 {
     const die_info_t *info = flash_get_die_info();
-
+    
+//    id[0] = info->chip_uuid[0];
+//    id[1] = info->chip_uuid[1];
+//    id[2] = info->chip_uuid[2];
+//    id[3] = info->chip_uuid[3];
     if(info)
     {
       *id = info->chip_uuid[0];
-      *(id+1) = info->chip_uuid[1];
+      *(id+1) = info->chip_uuid[3];
       *(id+2) = info->chip_uuid[2];
-      *(id+3) = info->chip_uuid[3];
+      *(id+3) = info->chip_uuid[1];
     }
     else
     {

@@ -39,7 +39,7 @@ uint8_t validate_bin_nvic(const uint8_t *buf)
         return validate_bin_nvic_base(buf);
     }
 }
-
+extern void HardFault_Handler(void);
 uint8_t validate_bin_nvic_base(const uint8_t *buf)
 {
     if (g_board_info.target_cfg) {
@@ -62,7 +62,7 @@ uint8_t validate_bin_nvic_base(const uint8_t *buf)
 
         // Reset_Handler
         // NMI_Handler
-        // HardFault_Handler
+        HardFault_Handler();
         for (; i <= 12; i += 4) {
             in_range = 0;
             memcpy(&nvic_val, buf + i, sizeof(nvic_val));

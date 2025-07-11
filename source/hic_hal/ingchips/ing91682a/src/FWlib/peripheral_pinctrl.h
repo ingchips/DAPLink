@@ -537,6 +537,8 @@ void PINCTRL_SetSlewRate(const uint8_t io_pin_index, const pinctrl_slew_rate_t r
  */
 void PINCTRL_SetDriveStrength(const uint8_t io_pin_index, const pinctrl_drive_strength_t strength);
 
+#define PINCTRL_SelSpiIn        PINCTRL_SelSpiPins
+
 #ifdef __cplusplus
 } /* allow C++ to use these headers */
 #endif    /* __cplusplus */

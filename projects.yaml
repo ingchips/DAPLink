@@ -25,7 +25,7 @@ module:
     if: &module_if
         - *module_tools
         - records/usb/usb-core.yaml
-        - records/usb/usb-msc.yaml
+        # - records/usb/usb-msc.yaml
         - records/usb/usb-cdc.yaml
         - records/usb/usb-webusb.yaml
         - records/usb/usb-winusb.yaml
@@ -104,6 +104,7 @@ module:
     hic_ing91682a: &module_hic_ing91682a
         - records/rtos/rtos-cm4.yaml
         - records/hic_hal/ing91682a.yaml
+        - records/usb/usb-hid.yaml
         - records/usb/usb-bulk.yaml
 
 projects:

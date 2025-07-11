@@ -101,6 +101,7 @@ typedef unsigned long long  uint64_t;
 #include "pwm_reg.h"
 #include "pdm_reg.h"
 #include "qdec_reg.h"
+#include "cmsis_compiler.h"
 
 /******************************************************************************/
 /*                            Memory Map                                      */

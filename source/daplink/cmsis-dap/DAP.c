@@ -409,7 +409,7 @@ static void Set_DAP_Clock_Delay(uint32_t clock) {
   }
 }
 
-
+void setuo_spi_clk(uint32_t clk);
 // Process SWJ Clock command and prepare response
 //   request:  pointer to request data
 //   response: pointer to response data
@@ -431,7 +431,7 @@ static uint32_t DAP_SWJ_Clock(const uint8_t *request, uint8_t *response) {
   }
 
   DAP_Data.nominal_clock = clock;
-
+  setuo_spi_clk(clock);
   Set_DAP_Clock_Delay(clock);
 
   *response = DAP_OK;

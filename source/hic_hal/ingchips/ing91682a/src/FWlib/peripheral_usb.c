@@ -3,6 +3,16 @@
 #include "soc.h"
 #include "ing91682a.h"
 
+#if 0
+void debug_di(void);
+void debug_do(void);
+#define  DEBUG_DI_PIN      debug_di();
+#define  DEBUG_DO_PIN      debug_do();
+#else
+#define  DEBUG_DI_PIN
+#define  DEBUG_DO_PIN
+#endif
+
 // =============================================================================
 // PRIVATE VARIABLES
 // =============================================================================
@@ -57,7 +67,7 @@ void USB_FlushTXFifo(uint8_t FifoNum)
   {
     AHB_USB->UsbDControl |= (0x1 << 7);
   }
-  
+
   while(!(AHB_USB->UsbIntStat & (0x1 << 6)));
   while(!(AHB_USB->UsbRControl & (1U << 31)));
   while(AHB_USB->UsbRControl & (0x1 << 5));
@@ -78,9 +88,8 @@ void USB_FlushRXFifo(void)
 
 void USB_DeviceInitialization(void)
 {
-  //AHB_USB->UsbIntMask |= (0x1 << 4) ;
   AHB_USB->UsbIntMask &= ~((0x1 << 3) | (0x1 << 4) | (0x1 << 5) | (0x1 << 15));
-  
+
   AHB_USB->UsbDConfig |= (3 << 0) | (1 << 24);
   AHB_USB->UsbDConfig &= ~(0x7F << 4);
   AHB_USB->UsbDConfig &= (~(1 << 23));
@@ -141,9 +150,9 @@ void USB_ReInit(void)
 USB_ERROR_TYPE_E USB_InitConfig(USB_INIT_CONFIG_T *config)
 {
   USB_ERROR_TYPE_E status = USB_ERROR_NONE;
-  
-  if(!config){status = USB_ERROR_INVALID_INPUT;}
-  
+
+  if(!config){return USB_ERROR_INVALID_INPUT;}
+
   g_UsbVar.DeviceState = USB_DEVICE_NONE;
   g_UsbVar.Ep0State = EP0_DISCONNECT;
   memcpy(&(g_UsbVar.UserConfig),config, sizeof(USB_INIT_CONFIG_T));
@@ -349,7 +358,7 @@ void USB_GetSetupPacket(void)
 {
   AHB_USB->UsbDOSize0  =  (0x3 << 29) | ((8*3) << 0)| (0x1 << 19);
   AHB_USB->UsbDODma0   =  (uint32_t)g_UsbBufferEp0Out;
-  AHB_USB->UsbDOCtrl0  |= (0x1 << 26) | (1U << 31);
+  AHB_USB->UsbDOCtrl0  |= (0x1 << 15) | (1U << 31);
 }
 
 uint32_t USB_GetMaxTransferSize(void)
@@ -465,7 +474,10 @@ void USB_NewTransfer(uint8_t ep, int32_t size, uint16_t nbPacket)
         break;
         default:
           AHB_USB->UsbDIxConfig[epNum-1].DISizex = ((size & 0x7FFFF) << 0) | ((nbPacket & 0x3FF) << 19) | (1 << 29);
-          AHB_USB->UsbDIxConfig[epNum-1].DICtrlx |= (1U << 31) | (0x1 << 26);
+          if (((AHB_USB->UsbDIxConfig[epNum-1].DICtrlx >> 18) & 0x3) == USB_EP_TYPE_ISO)
+              AHB_USB->UsbDIxConfig[epNum-1].DICtrlx |= (1U << 31) | (0x1 << 26) | ((AHB_USB->UsbDStatus & (1 << 8))? (1U << 28) : (1U << 29));
+          else
+              AHB_USB->UsbDIxConfig[epNum-1].DICtrlx |= (1U << 31) | (0x1 << 26);
         break;
       }
 
@@ -691,7 +703,7 @@ void USB_SetStallEp(uint8_t ep, uint8_t stall)
         {
           *diepctrl |= (0x1 << 21);
         }
-        USB_FlushTXFifo(0x10);
+        USB_FlushTXFifo(epNum);
       }
       else
       {
@@ -712,6 +724,41 @@ void USB_SetStallEp(uint8_t ep, uint8_t stall)
     }
 }
 
+uint8_t USB_IsEpStall(uint8_t ep)
+{
+    uint8_t epNum = USB_EP_NUM(ep);
+    volatile uint32_t*  diepctrl;
+    volatile uint32_t*  doepctrl;
+
+    if(epNum == 0)
+    {
+        diepctrl = &AHB_USB->UsbDICtrl0;
+        doepctrl = &AHB_USB->UsbDOCtrl0;
+    }
+    else
+    {
+        diepctrl = &AHB_USB->UsbDIxConfig[epNum-1].DICtrlx;
+        doepctrl = &AHB_USB->UsbDOxConfig[epNum-1].DOCtrlx;
+    }
+
+    if(USB_IS_EP_DIRECTION_IN(ep))
+    {
+      if(*diepctrl & (0x1 << 21))
+      {
+        return U_TRUE;
+      }
+    }
+    else
+    {
+      if(*doepctrl & (0x1 << 21))
+      {
+        return U_TRUE;
+      }
+    }
+    
+    return U_FALSE;
+}
+
 void USB_PCStopPhyClcok(uint8_t stop)
 {
   if(U_TRUE == stop)
@@ -723,6 +770,137 @@ void USB_PCStopPhyClcok(uint8_t stop)
     AHB_USB->UsbDControl &= ~(0x1);
   }
   nop(20);//required by HW
+}
+
+uint32_t USB_CheckTransferZeroPktCondition(uint8_t ep)
+{
+    uint8_t                epNum;
+    uint32_t               XferSize = 0;
+    USB_TRANSFERT_T*       transfer;
+    int32_t                sizeLastXfered;
+    int32_t                sizeRemain;
+    int32_t                sizeTotalXfered;
+    uint32_t               insert_zero_packet = 0;
+
+    epNum = USB_EP_NUM(ep);
+
+    /*
+      For continuous IN packet transmission, it is sometimes necessary to send a 
+      zero-length packet at the end to inform the host that all data has been sent. 
+      Then, the host switches to the OUT status phase. 
+    */
+
+    if(USB_IS_EP_DIRECTION_IN(ep))
+    {
+      transfer = &g_UsbVar.InTransfer[epNum];
+      switch(epNum)
+      {
+        case 0:
+          XferSize = (AHB_USB->UsbDISize0) & 0x7f;
+        break;
+        default:
+          XferSize = (AHB_USB->UsbDIxConfig[epNum-1].DISizex) & 0x7ffff;
+        break;
+      }
+    }
+    else
+    {
+      return 0;
+    }
+
+    if((transfer->flags)&(1<<USB_TRANSFERT_FLAG_SEND_ZERO_PKT))
+    {
+      // Zero-length packet will not be sent if data sending has been stopped.
+      if(transfer->sizeRemaining == -1)
+      {
+        return 0;
+      }
+
+      // If the previous packet is not sent completely, it indicates that a hardware problem occurs,
+      // and the sending of zero-length packet is abandoned. 
+      if(XferSize != 0)
+      {
+        return 0;
+      }
+
+      sizeLastXfered  = transfer->sizeTotalLen - XferSize;
+      sizeRemain = transfer->sizeRemaining - sizeLastXfered;
+      sizeTotalXfered = transfer->sizeTransfered - sizeLastXfered;
+
+      // If valid data exists, do not start sending zero-length packet.
+      if(sizeRemain > 0)
+      {
+        return 0;
+      }
+
+      // If the total length is not multiple of MPS, zero-length packet will not be sent.
+      if(sizeTotalXfered % g_UsbVar.ep[epNum].maxpacket)
+      {
+        return 0;
+      }
+
+      // Clear the flag to ensure that zero-length packet is sent only once.
+      transfer->flags &= ~(1<<USB_TRANSFERT_FLAG_SEND_ZERO_PKT);
+
+      // Send zero-length packet.
+      USB_NewTransfer(ep, 0, 1);
+
+      insert_zero_packet = 1;
+    }
+
+    return insert_zero_packet;
+}
+
+static void USB_CheckAutoSendZeroPktFlag(uint8_t ep, uint16_t size, uint32_t * flag)
+{
+    uint8_t   epNum;
+    uint32_t  setFlag = 1;
+    
+    USB_SETUP_T* setup = (USB_SETUP_T*)(g_UsbBufferEp0Out);
+    
+    epNum = USB_EP_NUM(ep);
+    
+    if(epNum != 0)
+    {
+      return;
+    }
+    
+    // Control transfer add flag about sending zero-length at last packet.
+    // Except cmd: [Get device descriptor]
+    switch(setup->bmRequestType.Recipient)
+    {
+      case USB_REQUEST_DESTINATION_DEVICE:
+      {
+        switch(setup->bmRequestType.Type)
+        {
+          case USB_REQUEST_TYPE_STANDARD:
+          {
+            switch(setup->bRequest)
+            {
+              case USB_REQUEST_DEVICE_GET_DESCRIPTOR:
+              {
+                switch(setup->wValue >> 8)
+                {
+                  case USB_REQUEST_DEVICE_DESCRIPTOR_DEVICE:
+                  {
+                    setFlag = 0;
+                  }
+                  break;
+                }
+              }
+              break;
+            }
+          }
+          break;
+        }
+      }
+      break;
+    }
+    
+    if(setFlag)
+    {
+      *flag |= (setup->wLength > size) ? (1 << USB_TRANSFERT_FLAG_SEND_ZERO_PKT) : 0;
+    }
 }
 
 USB_ERROR_TYPE_E USB_SendData(uint8_t ep, void* buffer, uint16_t size, uint32_t flag)
@@ -745,6 +923,8 @@ USB_ERROR_TYPE_E USB_SendData(uint8_t ep, void* buffer, uint16_t size, uint32_t 
     }
 
     if(!activeEp){return USB_ERROR_INACTIVE_EP;}
+    
+    USB_CheckAutoSendZeroPktFlag(ep, size, &flag);
 
     USB_StartTransfer(USB_EP_DIRECTION_IN(ep), buffer, size, flag);
 
@@ -807,14 +987,6 @@ void USB_HandleEp0(void)
   USB_SETUP_T* setup = (USB_SETUP_T*)(g_UsbBufferEp0Out);
   USB_EVNET_HANDLER_T event;
 
-  uint32_t event_status = 0;
-
-  BSP_DEBUG_HISTORY(BSP_DEBUG_BSP_EP0_STATE|(g_UsbVar.Ep0State), 1<<0);
-  
-  #ifdef BSP_DEBUG_V0
-  printf("-%d \n",g_UsbVar.Ep0State);
-  #endif
-  
   switch(g_UsbVar.Ep0State)
   {
     case EP0_IDLE:
@@ -843,17 +1015,19 @@ void USB_HandleEp0(void)
       }
       
       event.id = USB_EVENT_EP0_SETUP;
-      event_status = g_UsbVar.UserConfig.handler(&event);
-      
+      uint32_t event_status = g_UsbVar.UserConfig.handler(&event);
+
       //setup requset which is not supported, by spec, device should return stall pid to host
       if(USB_ERROR_REQUEST_NOT_SUPPORT == event_status)
       {
+        DEBUG_DO_PIN
         USB_SetEp0Stall((setup->bmRequestType.Direction) ? USB_EP_DIRECTION_IN(0) : USB_EP_DIRECTION_OUT(0));
       }
 
       //setup request was executed successfully
       if(USB_ERROR_NONE == event_status)
       {
+        DEBUG_DI_PIN
         //for two stage setup, setup follows with a status
         if(setup->wLength == 0)
         {
@@ -875,10 +1049,16 @@ void USB_HandleEp0(void)
     break;
     case EP0_IN_DATA_PHASE:
     {
+      DEBUG_DI_PIN
+      if(USB_CheckTransferZeroPktCondition(USB_EP_DIRECTION_IN(0)))
+      {
+        break;
+      }
       if(USB_ContinueTransfer(USB_EP_DIRECTION_IN(0)))
       {
         event.id = USB_EVENT_EP_DATA_TRANSFER;
         event.data.ep = 0;
+        event.data.size = 0;//no need to provide size for IN endpoint
         event.data.type = USB_CALLBACK_TYPE_TRANSMIT_END;
         g_UsbVar.UserConfig.handler(&event);
         USB_EP0StatusOut();
@@ -887,11 +1067,13 @@ void USB_HandleEp0(void)
     break;
     case EP0_OUT_DATA_PHASE:
     {
+      DEBUG_DO_PIN
       if(USB_ContinueTransfer(USB_EP_DIRECTION_OUT(0)))
       {
         // OUT was complete, prepare to receive IN for status
         event.id = USB_EVENT_EP_DATA_TRANSFER;
         event.data.ep = 0;
+        event.data.size = g_UsbVar.OutTransfer[0].sizeTransfered;
         event.data.type = USB_CALLBACK_TYPE_RECEIVE_END;
         g_UsbVar.UserConfig.handler(&event);
         USB_EP0StatusIn();
@@ -988,16 +1170,22 @@ void USBD_Handler(void)
         {
           statusEp            = AHB_USB->UsbDIInt0;
           BSP_DEBUG_HISTORY(EP0_IN_INT|statusEp, 1<<0);
-          
+          DEBUG_DO_PIN
           //SETUP - IN - IN - IN - OUT
           //SETUP - OUT - OUT - OUT - IN
           if(statusEp & (0x1 << 0))
           {
-            //check if remaining data needs to be transfered
-            //check if need to process status stage for OUT stage
-            if((g_UsbVar.Ep0State != EP0_IDLE) && ((g_UsbVar.Ep0State != EP0_IN_DATA_PHASE) || USB_ContinueTransfer(USB_EP_DIRECTION_IN(epnum))))
+            // Check if need to process IN data stage for control read.
+            // Check if need to process IN status stage for control write.
+            // Check if need to process IN status stage for control transfer without data.
+            switch(g_UsbVar.Ep0State)
             {
+              case EP0_IN_DATA_PHASE:
+              case EP0_IN_STATUS_PHASE:
                 USB_HandleEp0();
+                break;
+              default:
+                break;
             }
           }
 
@@ -1011,10 +1199,15 @@ void USBD_Handler(void)
           BSP_DEBUG_HISTORY(EP0_IN_INT|statusEp, 1<<epnum);
           if(statusEp & (0x1 << 0))
           {
+            if(USB_CheckTransferZeroPktCondition(USB_EP_DIRECTION_IN(epnum)))
+            {
+              continue;
+            }
             if( USB_ContinueTransfer(USB_EP_DIRECTION_IN(epnum)) )
             {
               event.id = USB_EVENT_EP_DATA_TRANSFER;
               event.data.ep = epnum;
+              event.data.size = 0;//no need to provide size for IN endpoint
               event.data.type = USB_CALLBACK_TYPE_TRANSMIT_END;
               g_UsbVar.UserConfig.handler(&event);
             }
@@ -1042,39 +1235,33 @@ void USBD_Handler(void)
           
           AHB_USB->UsbDOInt0 = statusEp;
 
-          if(statusEp & (0x1 << 0))
+          if(statusEp & (0x1 << 3))
           {
-            if(statusEp & (0x1 << 15))
+            g_UsbVar.Ep0State = EP0_IDLE;
+            USB_HandleEp0();
+          }
+          //SETUP - IN  - IN  - IN  - OUT   (g_UsbVar.Ep0State == EP0_OUT_STATUS_PHASE)
+          //SETUP - OUT - OUT - OUT - IN    (g_UsbVar.Ep0State == EP0_OUT_DATA_PHASE)
+          //SETUP ------------------- IN    (SHOULD NOT OCCUR HERE !)
+          else
+          {
+            if(statusEp & (0x1 << 0))
             {
-              g_UsbVar.Ep0State = EP0_IDLE;
-              USB_HandleEp0();
-            }
-            else
-            {
-              if((g_UsbVar.Ep0State != EP0_IDLE) )
+              // check if need to process OUT data stage for control write.
+              // check if need to process OUT status stage for control read.
+              switch(g_UsbVar.Ep0State)
               {
-                USB_HandleEp0();
+                case EP0_IDLE:
+                  break;
+                case EP0_OUT_DATA_PHASE:
+                case EP0_OUT_STATUS_PHASE:
+                  USB_HandleEp0();
+                  break;
+                default:
+                  break;
               }
             }
           }
-          else
-          {
-            if((statusEp & (0x1 << 5))&&(g_UsbVar.Ep0State == EP0_OUT_DATA_PHASE))
-            {
-              USB_EP0StatusIn();
-            }
-            if((statusEp & (0x1 << 3)))
-            {
-              USB_GetSetupPacket();
-            }
-          }
-
-//          if(statusEp & (0x1 << 5))
-//          {
-//            USB_EP0StatusIn();
-//          }
-
-          //AHB_USB->UsbDOInt0 = statusEp;
         }
         else
         {

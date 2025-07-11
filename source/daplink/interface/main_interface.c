@@ -260,7 +260,8 @@ void USBD_SignalHandler()
 {
     osThreadFlagsSet(main_task_id, FLAGS_MAIN_PROC_USB);
 }
-
+uint32_t test_swd = 0x88;
+uint8_t  SWD_Transfer(uint32_t request, uint32_t *data);
 extern void cdc_process_event(void);
 uint32_t SystemCoreClockDate;
 void main_task(void * arg)
@@ -293,7 +294,7 @@ void main_task(void * arg)
     gpio_set_msc_led(msc_led_value);
     // Initialize the DAP
     DAP_Setup();
-
+//    SWD_Transfer(0x02,&test_swd);
     // make sure we have a valid board info structure.
     util_assert(g_board_info.info_version == kBoardInfoVersion);
 
@@ -549,7 +550,8 @@ void main_task(void * arg)
     }
 }
 
-
+uint32_t SYSCTRL_GetPLLClk(void);
+volatile uint32_t pull;
 int main(void)
 {
     // Explicitly set the vector table since the bootloader might not set
@@ -560,6 +562,8 @@ int main(void)
     // initialize vendor sdk
     sdk_init();
     printf("main\r\n");
+    pull = SYSCTRL_GetPLLClk();
+    printf("data:%d\r\n",pull);
 
     // Initialize CMSIS-RTOS
     osKernelInitialize();

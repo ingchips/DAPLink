@@ -103,16 +103,75 @@ void SysInit(void)
   sys_ctrl_reg->cgu_cfg3.f.apb_clk_gpio0_gate = 0x1;
   sys_ctrl_reg->cgu_cfg3.f.apb_clk_gpio1_gate = 0x1;
 
-  NVIC_SetVectorTable(0x0, INGSIMD_A_FLASH_BASE+0x2000);
-  
+  extern uint32_t __Vectors;
+  NVIC_SetVectorTable(0x0, (uint32_t)&__Vectors);
+
   SystemCoreClock = SYSCTRL_GetPLLClk();
-  PINCTRL_Pull(11, PINCTRL_PULL_UP);
-  
+
   config_uart(OSC_CLK_FREQ, 921600);
+  printf("starting up: %u\n", SYSCTRL_GetHClk());
+}
+__WEAK
+void ingchips_combo_boards_select(int index, uint32_t app_addr)
+{
 }
 
+extern int uart_detect_target(
+  uint8_t *platform_version_found,
+  uint16_t *ver_major, uint8_t *ver_minor, uint8_t *ver_patch,
+  uint32_t *app_addr);
+
+static uint8_t platform_version_found = 0;
+static uint16_t ver_major = 0;
+static uint8_t ver_minor = 0;
+static uint8_t ver_patch = 0;
+static uint32_t app_addr = 0;
+
+#include "DAP_config.h"
+
+void debug_gpio_init(void);
 void sdk_init()
 {
-  SysInit();
-  flash_prepare_factory_data();
+//    NVIC_SetPriority(SysTick_IRQn, 0);
+    SysInit();
+    flash_prepare_factory_data();
+
+    int target_id = uart_detect_target(&platform_version_found, &ver_major, &ver_minor, &ver_patch, &app_addr);
+
+    if (platform_version_found)
+        printf("Target version: v%d.%d.%d", ver_major, ver_minor, ver_patch);
+
+    if (target_id < 0) {
+      target_id = 1;
+      app_addr = 0x2002000;
+    }
+    ingchips_combo_boards_select(target_id, app_addr);
+//    debug_gpio_init();
+}
+
+void debug_gpio_init(void)
+{
+    SYSCTRL_ClearClkGateMulti( (1 << SYSCTRL_ITEM_APB_GPIO1)
+                                    | (1 << SYSCTRL_ITEM_APB_GPIO0));
+    
+    
+    PINCTRL_SetPadMux(GIO_GPIO_28, IO_SOURCE_GENERAL);
+    GIO_SetDirection(GIO_GPIO_28, GIO_DIR_OUTPUT);
+    GIO_WriteValue(GIO_GPIO_28, 0);
+    PINCTRL_SetPadMux(GIO_GPIO_27, IO_SOURCE_GENERAL);
+    GIO_SetDirection(GIO_GPIO_27, GIO_DIR_OUTPUT);
+    GIO_WriteValue(GIO_GPIO_27, 0);
+}
+
+
+void debug_di(void)
+{
+    GIO_WriteValue(GIO_GPIO_28,1);
+    GIO_WriteValue(GIO_GPIO_28,0);
+}
+
+void debug_do(void)
+{
+    GIO_WriteValue(GIO_GPIO_27,1);
+    GIO_WriteValue(GIO_GPIO_27,0);
 }

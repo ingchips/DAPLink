@@ -1,7 +1,6 @@
 common:
     sources:
         board:
-            - source/board/ing91682a.c
+            - source/board/ingcombo.cpp
         family:
-            - source/family/ingchips/ing916/target.c
-            - source/family/ingchips/target_reset_ing916.c
+            - source/family/ingchips/combo/target.cpp

@@ -35,7 +35,7 @@ uint8_t DataTempBuf[DATA_TEMP_BUF_LEN] __attribute__ ((aligned (4)));
 uint32_t bsp_debug_flag = 0;
 typedef struct
 {
-  #define BSP_DEBUG_BUF_LEN (0x2000)
+  #define BSP_DEBUG_BUF_LEN (0x200)
   uint32_t BufIdx;
   uint32_t Buf[BSP_DEBUG_BUF_LEN];
 }BSP_DEBUG_BUF_STRUCTURE_S;
@@ -54,14 +54,14 @@ BSP_EP_STATE_S EpState[USBD_EP_NUM_MAX];
 #define DEBUG_MASK ((1<<0)|(1<<2)|(1<<4)|(1<<30))
 void BSP_DEBUG_HISTORY(uint32_t data, uint32_t mask)
 {
-  if(DEBUG_MASK & mask)
-  {
-    if((BspDebugBuf.BufIdx++)>=BSP_DEBUG_BUF_LEN)
-    {
-      BspDebugBuf.BufIdx = 0;
-    }
-    BspDebugBuf.Buf[BspDebugBuf.BufIdx] = data;
-  }
+  // if(DEBUG_MASK & mask)
+  // {
+  //   if((BspDebugBuf.BufIdx++)>=BSP_DEBUG_BUF_LEN)
+  //   {
+  //     BspDebugBuf.BufIdx = 0;
+  //   }
+  //   BspDebugBuf.Buf[BspDebugBuf.BufIdx] = data;
+  // }
 }
 
 void bsp_debug_history_init(void)
@@ -185,17 +185,19 @@ void bsp_usb_init(void)
 {
   USB_INIT_CONFIG_T config;
   
-  SYSCTRL_ClearClkGateMulti(1 << SYSCTRL_ITEM_APB_USB);
+  SYSCTRL_ClearClkGateMulti((1 << SYSCTRL_ITEM_APB_USB)|(1<<SYSCTRL_ITEM_APB_PinCtrl));
   //use SYSCTRL_GetClk(SYSCTRL_ITEM_APB_USB) to confirm, USB module clock has to be 48M.
   SYSCTRL_SelectUSBClk((SYSCTRL_ClkMode)(SYSCTRL_GetPLLClk()/48000000));
   
   //platform_set_irq_callback(PLATFORM_CB_IRQ_USB, USB_IrqHandler, NULL);
-  
+
   PINCTRL_SelUSB(USB_PIN_DP,USB_PIN_DM);
-  GIO_EnableAnalog(USB_PIN_DP);
-  GIO_EnableAnalog(USB_PIN_DM);
+    PINCTRL_SetDriveStrength(USB_PIN_DP,PINCTRL_DRIVE_12mA);
+    PINCTRL_SetDriveStrength(USB_PIN_DM,PINCTRL_DRIVE_12mA);
+//  GIO_EnableAnalog(USB_PIN_DP);
+//  GIO_EnableAnalog(USB_PIN_DM);
   
-  //SYSCTRL_USBPhyConfig(BSP_USB_PHY_ENABLE,BSP_USB_PHY_DP_PULL_UP);
+  SYSCTRL_USBPhyConfig(BSP_USB_PHY_ENABLE,BSP_USB_PHY_DP_PULL_UP);
   memset(EpState, 0x00, sizeof(EpState));
   memset(&config, 0x00, sizeof(USB_INIT_CONFIG_T));
   config.intmask = USBINTMASK_SOF;//USBINTMASK_SUSP | USBINTMASK_RESUME;
@@ -204,6 +206,7 @@ void bsp_usb_init(void)
   
   bsp_debug_history_init();
   
+//  NVIC_SetPriority(IRQn_usb, 0);
   NVIC_ClearPendingIRQ(IRQn_usb);
   NVIC_EnableIRQ(IRQn_usb);
 }
@@ -258,6 +261,7 @@ void USBD_Connect (uint32_t con) {
   } else {                              /* Disconnect */
     SYSCTRL_USBPhyConfig(BSP_USB_PHY_DISABLE,0);
   }
+
 }
 
 /*
