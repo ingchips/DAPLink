@@ -109,7 +109,7 @@ void SysInit(void)
   SystemCoreClock = SYSCTRL_GetPLLClk();
 
   config_uart(OSC_CLK_FREQ, 921600);
-  printf("starting up: %u\n", SYSCTRL_GetHClk());
+//  printf("starting up: %u\n", SYSCTRL_GetHClk());
 }
 __WEAK
 void ingchips_combo_boards_select(int index, uint32_t app_addr)
@@ -121,12 +121,6 @@ extern int uart_detect_target(
   uint16_t *ver_major, uint8_t *ver_minor, uint8_t *ver_patch,
   uint32_t *app_addr);
 
-static uint8_t platform_version_found = 0;
-static uint16_t ver_major = 0;
-static uint8_t ver_minor = 0;
-static uint8_t ver_patch = 0;
-static uint32_t app_addr = 0;
-
 #include "DAP_config.h"
 
 void debug_gpio_init(void);
@@ -136,16 +130,16 @@ void sdk_init()
     SysInit();
     flash_prepare_factory_data();
 
-    int target_id = uart_detect_target(&platform_version_found, &ver_major, &ver_minor, &ver_patch, &app_addr);
+//    int target_id = uart_detect_target(&platform_version_found, &ver_major, &ver_minor, &ver_patch, &app_addr);
 
-    if (platform_version_found)
-        printf("Target version: v%d.%d.%d", ver_major, ver_minor, ver_patch);
+//    if (platform_version_found)
+//        printf("Target version: v%d.%d.%d", ver_major, ver_minor, ver_patch);
 
-    if (target_id < 0) {
-      target_id = 1;
-      app_addr = 0x2002000;
-    }
-    ingchips_combo_boards_select(target_id, app_addr);
+//    if (target_id < 0) {
+//      target_id = 1;
+//      app_addr = 0x2002000;
+//    }
+//    ingchips_combo_boards_select(target_id, app_addr);
 //    debug_gpio_init();
 }
 

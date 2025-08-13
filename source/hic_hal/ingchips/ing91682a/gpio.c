@@ -50,25 +50,25 @@ void gpio_init(void)
                                     | (1 << SYSCTRL_ITEM_APB_SPI1));
                                 
 
-    PINCTRL_SetPadMux(LED_HID_PIN, IO_SOURCE_GENERAL);
+//    PINCTRL_SetPadMux(LED_HID_PIN, IO_SOURCE_GENERAL);
     GIO_SetDirection(LED_HID_PIN, GIO_DIR_OUTPUT);
     GIO_WriteValue(LED_HID_PIN, 0);
     
-    PINCTRL_SetPadMux(LED_MSC_PIN, IO_SOURCE_GENERAL);
+//    PINCTRL_SetPadMux(LED_MSC_PIN, IO_SOURCE_GENERAL);
     GIO_SetDirection(LED_MSC_PIN, GIO_DIR_OUTPUT);
     GIO_WriteValue(LED_MSC_PIN, 0);
     
-    PINCTRL_SetPadMux(LED_CDC_PIN, IO_SOURCE_GENERAL);
+//    PINCTRL_SetPadMux(LED_CDC_PIN, IO_SOURCE_GENERAL);
     GIO_SetDirection(LED_CDC_PIN, GIO_DIR_OUTPUT);
     GIO_WriteValue(LED_CDC_PIN, 0);
     
-    PINCTRL_SetPadMux(LED_PWR_PIN, IO_SOURCE_GENERAL);
+//    PINCTRL_SetPadMux(LED_PWR_PIN, IO_SOURCE_GENERAL);
     GIO_SetDirection(LED_PWR_PIN, GIO_DIR_OUTPUT);
     GIO_WriteValue(LED_PWR_PIN, 0);
     
     /////////////////
     
-    PINCTRL_SetPadMux(LED_CONNECTED_PIN, IO_SOURCE_GENERAL);
+//    PINCTRL_SetPadMux(LED_CONNECTED_PIN, IO_SOURCE_GENERAL);
     GIO_SetDirection(LED_CONNECTED_PIN, GIO_DIR_OUTPUT);
     GIO_WriteValue(LED_CONNECTED_PIN, 0);
     
@@ -286,9 +286,6 @@ uint8_t  SWD_Transfer(uint32_t request, uint32_t *data)
     uint32_t rw_data;
     uint32_t read_data;
     uint32_t read_parity;
-    uint32_t i;
-    uint32_t bytes; 
-    uint32_t rem_bits;
     
     parity= 0;
     rw_data = 0;

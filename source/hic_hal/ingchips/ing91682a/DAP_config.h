@@ -496,19 +496,22 @@ __STATIC_FORCEINLINE uint32_t PIN_nRESET_IN(void)
 #include "IO_Config.h"
 __STATIC_FORCEINLINE void     PIN_nRESET_OUT(uint32_t bit)
 {
-    swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
+    
     #ifdef nRESET_PIN
+//    swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
     // FET drive logic
     if (bit) {
         // GIO_WriteValue(nRESET_PIN, 1);
         
-        
-        APB_GPIO0->DoutSet |= 1 << nRESET_PIN;
+        swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
+        GIO_SetDirection(PIN_UART_RTS, GIO_DIR_OUTPUT);
+        APB_GPIO0->DoutSet |= 1 << PIN_UART_DTR;
     } else {
         // GIO_WriteValue(nRESET_PIN, 0);
         
-        
-        APB_GPIO0->DoutClear |= 1 << nRESET_PIN;
+        swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
+        GIO_SetDirection(PIN_UART_RTS, GIO_DIR_INPUT);
+        APB_GPIO0->DoutClear |= 1 << PIN_UART_DTR;
     }
     #else
     swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
@@ -643,7 +646,10 @@ when a device needs a time-critical unlock sequence that enables the debug port.
 //and swd write word include form swd_host.h
 __STATIC_INLINE uint32_t RESET_TARGET(void)
 {
-    swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
+//    swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
+    PIN_nRESET_OUT(0);
+    Delayms(1);
+    PIN_nRESET_OUT(1);
     return (1);              // change to '1' when a device reset sequence is implemented
     //we add swd reset commod so return 1 other return 0.
 }

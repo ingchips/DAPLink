@@ -42,7 +42,6 @@ UART_sStateStruct u_config;
 uint8_t g_data_bits = 0, g_stop_bits = 0, g_parity = 0;
 uint32_t g_baudrate = 0;
 uint8_t g_int_process = 0;
-static uint8_t control_line_active = 0;
 #define TX_FIFO_SIZE (32)
 struct {
     // Number of bytes pending to be transferred. This is 0 if there is no
@@ -68,17 +67,14 @@ static void config_comm_uart()
     PINCTRL_SetPadMux(PIN_UART_TX, IO_SOURCE_UART1_TXD);
     
     PINCTRL_SetPadMux(PIN_UART_RTS, IO_SOURCE_GPIO);
-    GIO_SetDirection(PIN_UART_RTS, GIO_DIR_OUTPUT);
-    GIO_WriteValue(PIN_UART_RTS, 1);
-
+    GIO_SetDirection(PIN_UART_RTS, GIO_DIR_INPUT);
     GIO_WriteValue(PIN_UART_RTS, 0);
     
     PINCTRL_SetPadMux(PIN_UART_DTR, IO_SOURCE_GPIO);
-    GIO_SetDirection(PIN_UART_DTR, GIO_DIR_OUTPUT);
-    GIO_WriteValue(PIN_UART_DTR, 1);
+    GIO_SetDirection(PIN_UART_DTR, GIO_DIR_INPUT);
+    GIO_WriteValue(PIN_UART_DTR, 0);
     PINCTRL_Pull(PIN_UART_RX, PINCTRL_PULL_UP);
 
-    GIO_WriteValue(PIN_UART_RTS, 0);
     #endif
     
     // setup channel 0 of timer 2: 100Hz
@@ -103,34 +99,14 @@ static void config_comm_uart()
     
 }
 
-static void activate_control_line()
-{
-    if (control_line_active)
-    {
-        TMR_IntClr(APB_TMR1, 0, 0xf);
-        TMR_Enable(APB_TMR1, 0, 0x0);
-    }
-    else
-    {
-        control_line_active = 1;
-        GIO_WriteValue(PIN_UART_RTS, 0);
-        GIO_SetDirection(PIN_UART_RTS, GIO_DIR_OUTPUT);
-
-        GIO_WriteValue(PIN_UART_DTR, 1);
-        GIO_SetDirection(PIN_UART_DTR, GIO_DIR_OUTPUT);
-    }
-
-    TMR_Enable(APB_TMR1, 0, 0xf);
-}
-
 void IRQHandler_Timer1(void)
 {
     TMR_IntClr(APB_TMR1, 0, 0xf);
     TMR_Enable(APB_TMR1, 0, 0x0);
-    control_line_active = 0;
+//    control_line_active = 0;
 
-    GIO_SetDirection(PIN_UART_RTS, GIO_DIR_NONE);
-    GIO_SetDirection(PIN_UART_DTR, GIO_DIR_NONE);
+//    GIO_SetDirection(PIN_UART_RTS, GIO_DIR_INPUT);
+//    GIO_SetDirection(PIN_UART_DTR, GIO_DIR_INPUT);
 }
 
 void clear_buffers(void)
@@ -175,7 +151,7 @@ int32_t uart_reset(void)
 {
     // disable interrupt
     NVIC_DisableIRQ(CDC_UART_IRQ);
-    printf("reset pin\n");
+//    printf("reset pin\n");
     // reset uart
     cb_buf.tx_size = 0;
     apUART_uart_reset(CDC_UART_BASE);
@@ -210,18 +186,25 @@ static int32_t uart_setup(const UART_Configuration *config, uint8_t enable_int)
     uint8_t cts_en = 0, rts_en = 0;
     uint32_t state;
     UART_ePARITY parity;
+    uint8_t stop_bit;
+    UART_eWLEN data_bits;
 
     // disable interrupt
     NVIC_DisableIRQ(CDC_UART_IRQ);
     uint32_t status = CDC_UART_BASE->IntRaw;
     CDC_UART_BASE->IntClear = status;
     
-    printf("baud:%d\n",config->Baudrate);
+//    printf("baud:%d\n",config->Baudrate);
+//    printf("parity:%d\n", config->Parity);
+//    printf("DataBits:%d\n", config->DataBits);
+//    printf("StopBits:%d\n", config->StopBits);
+//    printf("FlowControl:%d\n", config->FlowControl);
     
-    g_data_bits = 8;
-    g_stop_bits = 1;
+    g_data_bits = config->DataBits;
+    g_stop_bits = config->StopBits;
     g_parity = config->Parity;
     g_baudrate = config->Baudrate;
+    data_bits = (UART_eWLEN)(config->DataBits - 5);
     
     switch (config->Parity) {
         case UART_PARITY_ODD:
@@ -254,11 +237,16 @@ static int32_t uart_setup(const UART_Configuration *config, uint8_t enable_int)
         cts_en = 0;
         rts_en = 0;
     }
+    if(config->StopBits == 2) {
+        stop_bit = 1;
+    } else {
+        stop_bit = 0;
+    }
     
-    u_config.word_length       = UART_WLEN_8_BITS;
+    u_config.word_length       = data_bits;
     u_config.parity            = parity;
     u_config.fifo_enable       = 1;
-    u_config.two_stop_bits     = 0;
+    u_config.two_stop_bits     = stop_bit;
     u_config.receive_en        = 1;
     u_config.transmit_en       = 1;
     u_config.UART_en           = 1;
@@ -318,7 +306,6 @@ uint32_t line_ctr;
 #define CDC_EP_POINT          4
 void uart_set_control_line_state(uint16_t ctrl_bmp)
 {
-    uint32_t state;
 /*
 D15..D2
     RESERVED (Reset to zero)
@@ -341,19 +328,43 @@ D0
     // }
     
    // default set to high level
+//   if(ctrl_bmp & (1 << 1))
+//   {
+//       GIO_WriteValue(PIN_UART_RTS, 1);
+//       GIO_SetDirection(PIN_UART_RTS, GIO_DIR_OUTPUT);
+//   } else {
+//       GIO_SetDirection(PIN_UART_RTS, GIO_DIR_INPUT);
+//       GIO_WriteValue(PIN_UART_RTS, 0);
+//   }
+//   
+//   // default set to high level
+//   if(ctrl_bmp & (1 << 0))
+//   {
+//       GIO_SetDirection(PIN_UART_DTR, GIO_DIR_INPUT);
+//       GIO_WriteValue(PIN_UART_DTR, 0);
+//   } else {
+//       GIO_WriteValue(PIN_UART_DTR, 0);
+//       GIO_SetDirection(PIN_UART_DTR, GIO_DIR_OUTPUT);
+//   }
+
    if(ctrl_bmp & (1 << 1))
    {
-       GIO_WriteValue(PIN_UART_RTS, 0);
-   } else {
        GIO_WriteValue(PIN_UART_RTS, 1);
+       GIO_SetDirection(PIN_UART_RTS, GIO_DIR_OUTPUT);
+   } else {
+       GIO_SetDirection(PIN_UART_RTS, GIO_DIR_INPUT);
+       GIO_WriteValue(PIN_UART_RTS, 0);
    }
    
    // default set to high level
    if(ctrl_bmp & (1 << 0))
    {
        GIO_WriteValue(PIN_UART_DTR, 0);
+       GIO_SetDirection(PIN_UART_DTR, GIO_DIR_OUTPUT);
    } else {
-       GIO_WriteValue(PIN_UART_DTR, 1);
+       GIO_SetDirection(PIN_UART_DTR, GIO_DIR_INPUT);
+       GIO_WriteValue(PIN_UART_DTR, 0);
+       
    }
 }
 
@@ -502,111 +513,4 @@ uint32_t IRQHandler_Uart1(void *user_data)
     }
 
     return 0;
-}
-
-static void uart_delay_ms(uint32_t t)
-{
-    uint32_t cnt = (uint32_t)((uint64_t)TMR_GetClk(APB_TMR2, 0) * t / 1000);
-
-    TMR_SetOpMode(APB_TMR2, 0, TMR_CTL_OP_MODE_32BIT_TIMER_x1, TMR_CLK_MODE_APB, 0);
-    TMR_SetReload(APB_TMR2, 0, cnt);
-    TMR_IntEnable(APB_TMR2, 0, 0xf);
-    TMR_IntClr(APB_TMR2, 0, 0xf);
-    TMR_Enable(APB_TMR2, 0, 0x1);
-    while (TMR_IntHappened(APB_TMR2, 0) == 0) ;
-    TMR_Enable(APB_TMR2, 0, 0x0);
-    TMR_IntClr(APB_TMR2, 0, 0xf);
-}
-
-static int uart_extract_all_rx(UART_TypeDef *dev, uint8_t *buffer, int max_len)
-{
-    memset(buffer, 0, max_len);
-    int r = 0;
-    while ((r < max_len) && (apUART_Check_RXFIFO_EMPTY(dev) != 1))
-        buffer[r++] = (uint8_t)CDC_UART_BASE->DataRead;
-    return r;
-}
-
-int uart_detect_target(
-    uint8_t *platform_version_found,
-    uint16_t *ver_major, uint8_t *ver_minor, uint8_t *ver_patch,
-    uint32_t *app_addr)
-{
-    int r = -1;
-    uint32_t ver_location;
-
-    UART_Configuration config =
-    {
-        .Baudrate = 115200,
-        .DataBits = UART_DATA_BITS_8,
-        .Parity = UART_PARITY_NONE,
-        .StopBits = UART_STOP_BITS_1,
-        .FlowControl = UART_FLOW_CONTROL_NONE,
-    };
-
-    config_comm_uart();
-    uart_setup(&config, 0);
-
-    NVIC_DisableIRQ(CDC_UART_IRQ);
-
-    uint8_t buffer[32];
-    int len;
-
-    *platform_version_found = 0;
-
-    uart_set_control_line_state(0x2);
-    (void)uart_extract_all_rx(CDC_UART_BASE, buffer, sizeof(buffer));
-    uart_delay_ms(2);
-    uart_set_control_line_state(0x3);
-    uart_delay_ms(50);
-    len = uart_extract_all_rx(CDC_UART_BASE, buffer, sizeof(buffer));
-
-    IRQHandler_Timer1();
-
-    if (strcmp((char *)buffer, "UartBurnStart916\n") == 0)
-        r = INGCHIPS_FAMILY_916;
-    else if (strcmp((char *)buffer, "UartBurnStart\n") == 0)
-        r = INGCHIPS_FAMILY_918;
-    else
-        goto exit;
-
-    printf("target: %d\n", r);
-
-    uart_driver_send_data("#$state", 7);
-    uart_delay_ms(2);
-    len = uart_extract_all_rx(CDC_UART_BASE, buffer, sizeof(buffer));
-
-    if (strcmp((char *)buffer, "#$ulk\n"))
-        goto exit;
-
-    switch (r)
-    {
-    case INGCHIPS_FAMILY_918:
-        uart_driver_send_data("#$readd", 7);
-        ver_location = 0x000040b0;
-        break;
-    case INGCHIPS_FAMILY_916:
-        uart_driver_send_data("#$fsh2u", 7);
-        ver_location = 0x020020fc;
-        break;
-    }
-
-    uart_driver_send_data((uint8_t *)&ver_location, sizeof(ver_location));
-    uart_delay_ms(2);
-    len = uart_extract_all_rx(CDC_UART_BASE, buffer, 8);
-
-    if (len >= 8)
-    {
-        *platform_version_found = 1;
-
-        *ver_major = *(uint16_t *)(buffer + 0);
-        *ver_minor = *(uint8_t  *)(buffer + 2);
-        *ver_patch = *(uint8_t  *)(buffer + 3);
-
-        *app_addr = *(uint32_t *)(buffer + 4);
-    }
-
-exit:
-
-    return r;
 }

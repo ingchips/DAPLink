@@ -187,7 +187,7 @@ static void setup_string_descriptor()
 
 void info_init(void)
 {
-    info_crc_compute();
+//    info_crc_compute();
     read_unique_id(host_id);
     setup_basics();
     setup_unique_id();

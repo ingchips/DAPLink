@@ -276,7 +276,7 @@ void main_task(void * arg)
 #ifdef PBON_BUTTON
     uint8_t power_on = 1;
 #endif
-
+    printf("config init\r\n");
     // Initialize settings - required for asserts to work
     config_init();
 
@@ -284,6 +284,7 @@ void main_task(void * arg)
     // Get a reference to this task
     main_task_id = osThreadGetId();
 #endif
+    printf("gpio init\r\n");
     // leds
     gpio_init();
     // Turn to LED default settings
@@ -300,7 +301,6 @@ void main_task(void * arg)
     if (g_board_info.prerun_board_config) {
         g_board_info.prerun_board_config();
     }
-
     //initialize the family
     init_family();
 
@@ -317,7 +317,6 @@ void main_task(void * arg)
         flash_manager_set_page_erase(true);
 #endif
     }
-
     // Update versions and IDs
     info_init();
     // Update bootloader if it is out of date
@@ -560,10 +559,11 @@ int main(void)
     sdk_init();
     printf("main\r\n");
     pull = SYSCTRL_GetPLLClk();
-    printf("data:%d\r\n",pull);
+//    printf("data:%d\r\n",pull);
 
     // Initialize CMSIS-RTOS
     osKernelInitialize();
+//    printf("data:%d\r\n",pull);
 
     // Create application main thread
 #ifndef USE_LEGACY_CMSIS_RTOS
@@ -571,7 +571,7 @@ int main(void)
 #else
     osThreadNew(main_task, NULL, NULL);
 #endif
-
+//    printf("will start\r\n");
     // Start thread execution
     osKernelStart();
 
