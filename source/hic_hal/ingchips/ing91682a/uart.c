@@ -42,6 +42,7 @@ UART_sStateStruct u_config;
 uint8_t g_data_bits = 0, g_stop_bits = 0, g_parity = 0;
 uint32_t g_baudrate = 0;
 uint8_t g_int_process = 0;
+static volatile uint8_t timer_run_flg = 0;
 #define TX_FIFO_SIZE (32)
 struct {
     // Number of bytes pending to be transferred. This is 0 if there is no
@@ -162,6 +163,9 @@ int32_t uart_reset(void)
 
 static void renable_uart(void)
 {
+    if(timer_run_flg)
+        return;
+    timer_run_flg = 1;
     CDC_UART_BASE->Control &= (~(1<<bsUART_ENABLE));
     NVIC_DisableIRQ(CDC_UART_IRQ);
     TMR_Enable(APB_TMR2, 0, 0xf);
@@ -171,6 +175,7 @@ void IRQHandler_Timer2(void)
 {
     uint32_t status;
     status = CDC_UART_BASE->IntRaw;
+    printf("1\r\n");
 
     CDC_UART_BASE->IntClear = status;
     TMR_IntClr(APB_TMR2, 0, 0xf);
@@ -178,6 +183,7 @@ void IRQHandler_Timer2(void)
     NVIC_ClearPendingIRQ(CDC_UART_IRQ);
     CDC_UART_BASE->Control |= (1<<bsUART_ENABLE);
     NVIC_EnableIRQ(CDC_UART_IRQ);
+    timer_run_flg = 0;
 }
 
 static int32_t uart_setup(const UART_Configuration *config, uint8_t enable_int)
@@ -254,7 +260,7 @@ static int32_t uart_setup(const UART_Configuration *config, uint8_t enable_int)
     u_config.rts_en            = rts_en;
     u_config.rxfifo_waterlevel = 1;
     u_config.txfifo_waterlevel = 1;
-    u_config.ClockFrequency    = OSC_CLK_FREQ;
+    u_config.ClockFrequency    = SYSCTRL_GetHClk();//OSC_CLK_FREQ;
     u_config.BaudRate          = config->Baudrate;
 
     state = cortex_int_get_and_disable();
@@ -373,32 +379,7 @@ int32_t uart_write_free(void)
     return circ_buf_count_free(&write_buffer);
 }
 
-uint32_t uart_driver_send_data(uint8_t *c, uint16_t len)
-{
-  uint16_t i;
-  for(i = 0; i < len; i++)
-  {
-    while (apUART_Check_TXFIFO_FULL(CDC_UART_BASE) == 1);
-    UART_SendData(CDC_UART_BASE, (uint8_t)*(c+i));
-  }
-  return 0;
-}
 
-uint32_t send_len = 0;
-uint32_t uart_driver_send_data_fifo_scheme(uint8_t *c, volatile uint32_t *len)
-{
-  uint16_t i;
-  
-  for(i = 0; i < *len; i++)
-  {
-    if(apUART_Check_TXFIFO_FULL(CDC_UART_BASE)){break;};
-    UART_SendData(CDC_UART_BASE, (uint8_t)*(c+i));
-  }
-  
-  *len -= i;
-  send_len = i;
-  return 0;
-}
 
 int32_t uart_write_data(uint8_t *data, uint16_t size)
 {
@@ -410,7 +391,7 @@ int32_t uart_write_data(uint8_t *data, uint16_t size)
 //    printf("uart_write_data %d\n", size);
 //    printf("write data\n");
     cnt = circ_buf_write(&write_buffer, data, size);
-    
+    uint8_t c;
     state = cortex_int_get_and_disable();
     if (circ_buf_count_used(&write_buffer) > 0 && g_int_process == 0) {
         if ((apUART_Get_INT_Mask(CDC_UART_BASE)&(1<<bsUART_TRANSMIT_INTENAB)) == 0) {
@@ -422,6 +403,10 @@ int32_t uart_write_data(uint8_t *data, uint16_t size)
             
             if(size < 4) {
                 while (size) {
+//                    c = circ_buf_pop(&write_buffer);
+//                    UART_SendData(APB_UART0,c);
+//                    CDC_UART_BASE->DataRead = c;
+                    while (apUART_Check_TXFIFO_FULL(CDC_UART_BASE));
                     CDC_UART_BASE->DataRead = circ_buf_pop(&write_buffer);
                     size--;
                 }
@@ -430,6 +415,10 @@ int32_t uart_write_data(uint8_t *data, uint16_t size)
             }
             g_int_process = 1;
               while (size - 1) {
+//                  c = circ_buf_pop(&write_buffer);
+//                  UART_SendData(APB_UART0,c);
+//                  CDC_UART_BASE->DataRead = c;
+                  while (apUART_Check_TXFIFO_FULL(CDC_UART_BASE));
                   CDC_UART_BASE->DataRead = circ_buf_pop(&write_buffer);
                   size--;
               }
@@ -466,12 +455,16 @@ uint32_t IRQHandler_Uart1(void *user_data)
 //        printf("errot faild frame\n");
         err_cnt++;
         if(err_cnt > 5)
-            renable_uart();
+        {
+//            renable_uart();
+            err_cnt = 0;
+        }
+            
 //        printf("e\n");
 //        cb_buf.rx = APB_UART1->DataRead;
         CDC_UART_BASE->StatusClear = 1;
     }
-    
+    uint8_t c;
     // tx int
     if (status & (1 << bsUART_TRANSMIT_INTENAB)) {
         /* Fill the Tx FIFO */
@@ -481,6 +474,10 @@ uint32_t IRQHandler_Uart1(void *user_data)
                 size = TX_FIFO_SIZE;
             } 
             while (size) {
+//                c = circ_buf_pop(&write_buffer);
+//                UART_SendData(APB_UART0,c);
+//                CDC_UART_BASE->DataRead = c;
+                while (apUART_Check_TXFIFO_FULL(CDC_UART_BASE));
                 CDC_UART_BASE->DataRead = circ_buf_pop(&write_buffer);
                 size--;
             }
@@ -490,6 +487,10 @@ uint32_t IRQHandler_Uart1(void *user_data)
             /* No more data, just stop Tx (Stop work) */
             CDC_UART_BASE->IntMask &= ~(1<<bsUART_TRANSMIT_INTENAB);
             for(i=0;i<size;i++) {
+//                c = circ_buf_pop(&write_buffer);
+//                UART_SendData(APB_UART0,c);
+//                CDC_UART_BASE->DataRead = c;
+                while (apUART_Check_TXFIFO_FULL(CDC_UART_BASE));
                 CDC_UART_BASE->DataRead = circ_buf_pop(&write_buffer);
             }
             
@@ -500,8 +501,10 @@ uint32_t IRQHandler_Uart1(void *user_data)
     if (status & (1 << bsUART_RECEIVE_INTENAB)) {
         while (apUART_Check_RXFIFO_EMPTY(APB_UART1) != 1) {
             cb_buf.rx = APB_UART1->DataRead;
+            
             uint32_t free = circ_buf_count_free(&read_buffer);
             if (free > RX_OVRF_MSG_SIZE) {
+//                UART_SendData(APB_UART0,cb_buf.rx);
                 circ_buf_push(&read_buffer, cb_buf.rx);
             } else if ((RX_OVRF_MSG_SIZE == free) && config_get_overflow_detect()) {
                 circ_buf_write(&read_buffer, (uint8_t*)RX_OVRF_MSG, RX_OVRF_MSG_SIZE);

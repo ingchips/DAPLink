@@ -504,14 +504,15 @@ __STATIC_FORCEINLINE void     PIN_nRESET_OUT(uint32_t bit)
         // GIO_WriteValue(nRESET_PIN, 1);
         
         swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
-        GIO_SetDirection(PIN_UART_RTS, GIO_DIR_OUTPUT);
         APB_GPIO0->DoutSet |= 1 << PIN_UART_DTR;
+        GIO_SetDirection(PIN_UART_DTR, GIO_DIR_INPUT);
     } else {
         // GIO_WriteValue(nRESET_PIN, 0);
         
         swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));
-        GIO_SetDirection(PIN_UART_RTS, GIO_DIR_INPUT);
+        GIO_SetDirection(PIN_UART_DTR, GIO_DIR_OUTPUT);
         APB_GPIO0->DoutClear |= 1 << PIN_UART_DTR;
+        
     }
     #else
     swd_write_word((uint32_t)&SCB->AIRCR, ((0x5FA << SCB_AIRCR_VECTKEY_Pos) | SCB_AIRCR_SYSRESETREQ_Msk));

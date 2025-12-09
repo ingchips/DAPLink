@@ -107,8 +107,11 @@ void SysInit(void)
   NVIC_SetVectorTable(0x0, (uint32_t)&__Vectors);
 
   SystemCoreClock = SYSCTRL_GetPLLClk();
+  
+  SYSCTRL_SelectUartClk(UART_PORT_0, SYSCTRL_CLK_HCLK);
+  SYSCTRL_SelectUartClk(UART_PORT_1, SYSCTRL_CLK_HCLK);
 
-  config_uart(OSC_CLK_FREQ, 921600);
+  config_uart(SYSCTRL_GetHClk(), 921600);
 //  printf("starting up: %u\n", SYSCTRL_GetHClk());
 }
 __WEAK

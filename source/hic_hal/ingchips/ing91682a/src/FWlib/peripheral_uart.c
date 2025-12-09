@@ -21,7 +21,7 @@ void apUART_BaudRateSet(UART_TypeDef* pBase, uint32_t ClockFrequency, uint32_t B
     pBase->IntBaudDivisor   = BaudIntDiv;
 
     if (( BaudIntDiv > 65535 ) || ( BaudIntDiv == 0 ))
-        for (;;);
+        return;
 
     /* Calculate fractional baud rate register value */
     if ( BaudIntDiv == 65535 )
