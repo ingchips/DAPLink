@@ -1,0 +1,16 @@
+# Local build and tool output
+/build/
+/.cache/
+/.embeddedskills/
+/tests/*.exe
+/tests/*.o
+/*.uvguix.*
+/JLinkLog.txt
+/verbose
+/src/BSP/verbose
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

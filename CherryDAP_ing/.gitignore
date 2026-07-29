@@ -1,0 +1,11 @@
+# Keil and local build output
+projectfiles/output/
+projectfiles/listing/
+output/
+build/
+*.uvoptx
+*.uvgui.*
+JLink*.*
+build_log
+verbose
+compile_commands.json

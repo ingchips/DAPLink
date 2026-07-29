@@ -1,0 +1,9 @@
+#ifndef TEST_SYS_INIT_H
+#define TEST_SYS_INIT_H
+
+#define APP_ADDR        0x0200F000UL
+#define APP_END_ADDR    0x02200000UL
+#define APP_RAM_START   0x20000000UL
+#define APP_RAM_END     0x20008000UL
+
+#endif

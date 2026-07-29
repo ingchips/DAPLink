@@ -1,59 +1,70 @@
+# ING916 DAP 固件仓库
 
-[![DAPLink](/docs/images/daplink-website-logo-link.png)](https://daplink.io/)
+本仓库由三个相互独立的固件工程和一个统一发布目录组成。首次使用时必须先下载 bootloader，再下载其中一套 APP；后续可以进入 U 盘模式升级 APP。
 
-[![Linux Build (main)](https://github.com/ARMmbed/DAPLink/actions/workflows/linux.yml/badge.svg?branch=main)](https://github.com/ARMmbed/DAPLink/actions/workflows/linux.yml)
-[![Linux Build (develop)](https://github.com/ARMmbed/DAPLink/actions/workflows/linux.yml/badge.svg?branch=develop)](https://github.com/ARMmbed/DAPLink/actions/workflows/linux.yml)
-[![Join us on Slack](https://img.shields.io/static/v1?label=Slack&color=4A154B&logo=slack&style=social&message=Join%20us%20on%20Slack)](https://join.slack.com/t/pyocd/shared_invite/zt-zqjv6zr5-ZfGAXl_mFCGGmFlB_8riHA)
+## 仓库结构
 
-----
+| 目录 | 内容 | 特点 |
+| --- | --- | --- |
+| `DAPLink/` | 基于 Arm DAPLink 主线的 ING916 适配 | 完整 DAPLink 功能 |
+| `CherryDAP_ing/` | 基于 CherryDAP、CherryUSB 和 FreeRTOS 的 ING916 适配 | USB 初始化和设备枚举更快 |
+| `bl/` | ING916 bootloader | 支持通过 U 盘拖拽 HEX/BIN 文件升级 APP |
+| `firmware/` | 可直接下载的固件 | 按 bootloader、DAPLink APP、CherryDAP APP 分类 |
 
-Arm Mbed DAPLink is an open-source software project that enables programming and debugging application software running on Arm Cortex CPUs. Commonly referred to as interface firmware, DAPLink runs on a secondary MCU that is attached to the SWD or JTAG port of the application MCU. This configuration is found on nearly all development boards. Enumerating as a USB composite device, it creates a bridge between your development computer and the CPU debug access port. DAPLink enables developers with:
+三个工程的源码、依赖和 Keil 工程文件均位于各自目录内，互不混杂。
 
-* MSC - drag-n-drop programming flash memory
-* CDC - virtual com port for log, trace and terminal emulation
-* CMSIS-DAPv2 WinUSB (driver-less vendor-specific bulk) - CMSIS compliant debug channel
-* CMSIS-DAPv1 HID - CMSIS compliant debug channel
-* WebUSB CMSIS-DAP HID - CMSIS compliant debug channel
+## 固件文件
 
-More features are planned and will show up gradually over time. The project is constantly under heavy development by Arm, its partners, numerous hardware vendors and the open-source community around the world. DAPLink has superseded the mbed CMSIS-DAP interface firmware project. You are free to use and contribute. Enjoy!
+- Bootloader：`firmware/bl/ing916_bl.bin`
+- DAPLink APP：`firmware/daplink/ingchips_ing916_if_crc.bin` 或 `firmware/daplink/ingchips_ing916_if_crc.hex`
+- CherryDAP APP：`firmware/cherrydap/CherryDAP_ing.bin` 或 `firmware/cherrydap/CherryDAP_ing.hex`
 
-For more detailed usability information [see the users guide.](docs/USERS-GUIDE.md)
+两套 APP 二选一。APP 的链接起始地址均为 `0x0200F000`，不要把 APP 下载到 bootloader 区域。
 
-## Compatibility
-There are many ARM microcontroller-based Hardware Interface Circuits (HICs) that DAPLink interface firmware runs on. These can be found as standalone boards (debugger) or as part of a development kit. Some branded circuits that are known to be IO compatible are:
+## 首次下载
 
-* [Maxim Integrated MAX32625PICO based on MAX32625](https://www.maximintegrated.com/en/products/microcontrollers/MAX32625PICO.html)
-* Nuvoton Nu-Link2-Me based on M48SSIDAE
-* [NXP LPC-Link2 based on LPC11U35 or LPC4322](https://www.nxp.com/support/developer-resources/hardware-development-tools/lpcxpresso-boards:LPCXPRESSO-BOARDS)
-* [NXP MCU-LINK on LPC55xx](https://www.nxp.com/design/microcontrollers-developer-resources/mcu-link-debug-probe:MCU-LINK)
-* [NXP OpenSDA based on K20, K22, KL26Z and KL27Z](http://www.nxp.com/products/software-and-tools/run-time-software/kinetis-software-and-tools/ides-for-kinetis-mcus/opensda-serial-and-debug-adapter:OPENSDA)
-* [Segger J-Link OB based on Atmel SAM3U](https://www.segger.com/products/debug-probes/j-link/models/j-link-ob/)
-* [STMicroelectronics ST-LINK/V2 (on NUCLEO boards) based on STM32F103CB](https://www.st.com/en/evaluation-tools/stm32-nucleo-boards.html)
+1. 连接调试器的 SWD/J-Link 接口。
+2. 先下载 `firmware/bl/ing916_bl.bin`。使用裸 BIN 下载时，起始地址为 `0x02000000`；也可以打开 `bl/ing916__bl.uvprojx` 在 Keil 中下载。
+3. 再从 DAPLink 或 CherryDAP 中选择一套 APP 下载：
+   - HEX 文件自带地址信息，可直接下载。
+   - 裸 BIN 文件的下载起始地址为 `0x0200F000`。
+4. 复位或重新上电，确认调试器正常枚举。
 
-You can find more information on the microcontrollers supported [here](docs/hic/README.md).
+必须保持“先 bootloader，后 APP”的顺序。只下载 APP 时，设备不能使用 bootloader 的 U 盘升级功能。
 
-## Releases
-There are many board builds (board = HIC + target combination) created from this repository. Quarterly releases will contain new features and bugfixes. Standalone bugfixes are released once reported, verified and fixed. Both quarterly and bugfix releases will result in the build number being incremented. Many development kits and products ship with DAPLink interface firmware or are capable of running DAPLink firmware. **[The current release builds and instructions for updating DAPLink interface firmware is hosted on the DAPLink release site.](https://daplink.io/)** Release notes and previous release builds can be found under GitHub releases.
+## U 盘升级 APP
 
-## Contribute
+1. 断开设备电源或 USB。
+2. 将调试口的 `TX` 短接到 `VCC`。
+3. 保持短接并重新连接 USB 或复位设备，电脑会出现 bootloader U 盘。
+4. 将新的 APP `.hex` 或 `.bin` 文件拖入该 U 盘。一次只复制一个固件文件。
+5. 等待写入完成和设备复位，不要在复制过程中断电或拔出 USB。
+6. 移除 `TX` 与 `VCC` 的短接，再次复位或重新上电，运行新的 APP。
 
-We welcome contributions to DAPLink in any area. Look for an interesting feature or defect
-[under issues](https://github.com/ARMmbed/DAPLink/issues). Start a new thread [in the
-discussions](https://github.com/ARMmbed/DAPLink/discussions) or
-[in Slack](https://join.slack.com/t/pyocd/shared_invite/zt-zqjv6zr5-ZfGAXl_mFCGGmFlB_8riHA)
-to engage with the developers and maintainers.
+U 盘升级只更新从 `0x0200F000` 开始的 APP 区域，不需要重复下载 bootloader。
 
-Please see the [contribution guidelines](CONTRIBUTING.md) for detailed requirements for
-contributions.
+## 编译入口
 
-To report bugs, please [create an issue](https://github.com/ARMmbed/DAPLink/issues/new) in the
-GitHub project.
+### 主线 DAPLink 适配
 
-## Develop
-Information for setting up a development environment, running the tests or creating a release build [can be found in the developers guide.](docs/DEVELOPERS-GUIDE.md)
+```text
+DAPLink/projectfiles/uvision5/ingchips_ing916_if/ingchips_ing916_if.uvprojx
+```
 
-## License
-DAPLink is licensed with the permissive Apache 2.0 license. See the [LICENSE](LICENSE) file for the
-full text of the license.
+工程目标为 `ingchips_ing916_if`。用于 bootloader 升级时，应使用带 CRC 的输出文件。上游项目说明和开发资料分别见 `DAPLink/README.md` 与 `DAPLink/docs/`。
 
-Copyright © 2006-2023 Arm Ltd
+### CherryDAP 适配
+
+```text
+CherryDAP_ing/projectfiles/CherryDAP_ing.uvprojx
+```
+
+链接脚本将 APP 放在 `0x0200F000`。该版本适合需要更快 USB 初始化和枚举速度的场景。
+
+### Bootloader
+
+```text
+bl/ing916__bl.uvprojx
+```
+
+重新编译后，应先通过 SWD/J-Link 下载 bootloader，再下载其中一套 APP。
