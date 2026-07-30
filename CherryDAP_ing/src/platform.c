@@ -20,13 +20,8 @@
 #define PRINT_PORT  APB_UART0
 #define UART_TX_FIFO_SIZE 32U
 
-static const uint8_t *cdc_tx_data;
-static volatile uint16_t cdc_tx_length;
-static volatile uint16_t cdc_tx_offset;
-static volatile uint16_t cdc_tx_complete;
 static volatile uint32_t cdc_rx_overflow;
 static volatile uint16_t cdc_control_line_state;
-static volatile uint8_t cdc_control_line_dirty;
 
 typedef struct {
     volatile uint32_t requests;
@@ -57,6 +52,7 @@ int fputc(int ch, FILE *f)
 //**************************************************************************************************
 
 extern chry_ringbuffer_t g_uartrx;
+extern chry_ringbuffer_t g_usbrx;
 extern volatile uint8_t config_uart_transfer;
 
 static void config_cdc_uart(const struct cdc_line_coding *line_coding)
@@ -89,13 +85,15 @@ static void config_cdc_uart(const struct cdc_line_coding *line_coding)
     config.BaudRate          = line_coding->dwDTERate ? line_coding->dwDTERate : 115200U;
 
     NVIC_DisableIRQ(CDC_UART_IRQ);
-    cdc_tx_length = 0U;
-    cdc_tx_offset = 0U;
+    uart_reset(CDC_UART_BASE);
     CDC_UART_BASE->IntClear = CDC_UART_BASE->IntRaw;
-    CDC_UART_BASE->Control = 0U;
-    apUART_Initialize(CDC_UART_BASE, &config, (1UL << bsUART_RECEIVE_INTENAB));
+    apUART_Initialize(CDC_UART_BASE, &config,
+                      (1UL << bsUART_RECEIVE_INTENAB) |
+                      (1UL << bsUART_TIMEOUT_INTENAB) |
+                      UART_INTBIT_ERROR);
     NVIC_ClearPendingIRQ(CDC_UART_IRQ);
-    NVIC_SetPriority(CDC_UART_IRQ, 3U);
+    /* Keep UART above USB (priority 2) so sustained USB traffic cannot starve RX. */
+    NVIC_SetPriority(CDC_UART_IRQ, 1U);
     NVIC_EnableIRQ(CDC_UART_IRQ);
 }
 
@@ -150,6 +148,8 @@ void platform_uart_init(void)
 // CDC UART callbacks (called by CherryDAP)
 //**************************************************************************************************
 
+static void apply_cdc_control_line_state(uint16_t state);
+
 void chry_dap_usb2uart_uart_config_callback(struct cdc_line_coding *line_coding)
 {
     config_cdc_uart(line_coding);
@@ -157,28 +157,44 @@ void chry_dap_usb2uart_uart_config_callback(struct cdc_line_coding *line_coding)
 
 void usbd_cdc_acm_set_dtr(uint8_t busid, uint8_t intf, bool dtr)
 {
+    uint32_t state;
+
     (void)busid;
     (void)intf;
 
+    state = __get_PRIMASK();
+    __disable_irq();
     if (dtr) {
         cdc_control_line_state |= 0x01U;
     } else {
         cdc_control_line_state &= (uint16_t)~0x01U;
     }
-    cdc_control_line_dirty = 1U;
+    apply_cdc_control_line_state(cdc_control_line_state);
+    __DMB();
+    if (state == 0U) {
+        __enable_irq();
+    }
 }
 
 void usbd_cdc_acm_set_rts(uint8_t busid, uint8_t intf, bool rts)
 {
+    uint32_t state;
+
     (void)busid;
     (void)intf;
 
+    state = __get_PRIMASK();
+    __disable_irq();
     if (rts) {
         cdc_control_line_state |= 0x02U;
     } else {
         cdc_control_line_state &= (uint16_t)~0x02U;
     }
-    cdc_control_line_dirty = 1U;
+    apply_cdc_control_line_state(cdc_control_line_state);
+    __DMB();
+    if (state == 0U) {
+        __enable_irq();
+    }
 }
 
 static void apply_cdc_control_line_state(uint16_t state)
@@ -203,29 +219,44 @@ static void apply_cdc_control_line_state(uint16_t state)
 void platform_cdc_control_reset(void)
 {
     cdc_control_line_state = 0U;
-    cdc_control_line_dirty = 0U;
     apply_cdc_control_line_state(0U);
 }
 
 RAM_CODE void chry_dap_usb2uart_uart_send_bydma(uint8_t *data, uint16_t len)
 {
+    uint32_t count;
     uint32_t state;
+    uint8_t byte;
 
-    if ((data == NULL) || (len == 0U)) {
-        chry_dap_usb2uart_uart_send_complete(0U);
-        return;
-    }
+    (void)data;
+    (void)len;
 
     state = __get_PRIMASK();
     __disable_irq();
-    cdc_tx_data = data;
-    cdc_tx_length = len;
-    cdc_tx_offset = 0U;
-    while ((cdc_tx_offset < cdc_tx_length) &&
-           (apUART_Check_TXFIFO_FULL(CDC_UART_BASE) == 0U)) {
-        UART_SendData(CDC_UART_BASE, cdc_tx_data[cdc_tx_offset++]);
+    if ((CDC_UART_BASE->IntMask & (1UL << bsUART_TRANSMIT_INTENAB)) == 0U) {
+        count = chry_ringbuffer_get_used(&g_usbrx);
+        if (count < 4U) {
+            while ((count != 0U) &&
+                   (apUART_Check_TXFIFO_FULL(CDC_UART_BASE) == 0U)) {
+                chry_ringbuffer_read_byte(&g_usbrx, &byte);
+                UART_SendData(CDC_UART_BASE, byte);
+                count--;
+            }
+        } else {
+            if (count > UART_TX_FIFO_SIZE) {
+                count = UART_TX_FIFO_SIZE;
+            }
+            /* Match DAPLink: keep software data pending before enabling TX IRQ. */
+            while ((count > 1U) &&
+                   (apUART_Check_TXFIFO_FULL(CDC_UART_BASE) == 0U)) {
+                chry_ringbuffer_read_byte(&g_usbrx, &byte);
+                UART_SendData(CDC_UART_BASE, byte);
+                count--;
+            }
+            apUART_Enable_TRANSMIT_INT(CDC_UART_BASE);
+        }
     }
-    apUART_Enable_TRANSMIT_INT(CDC_UART_BASE);
+    __DMB();
     if (state == 0U) {
         __enable_irq();
     }
@@ -237,7 +268,9 @@ RAM_CODE void IRQHandler_Uart1(void)
 
     CDC_UART_BASE->IntClear = status;
 
-    if ((status & (1UL << bsUART_RECEIVE_INTENAB)) != 0U) {
+    if (((status & ((1UL << bsUART_RECEIVE_INTENAB) |
+                    (1UL << bsUART_TIMEOUT_INTENAB))) != 0U) ||
+        (apUART_Check_RXFIFO_EMPTY(CDC_UART_BASE) == 0U)) {
         while (apUART_Check_RXFIFO_EMPTY(CDC_UART_BASE) == 0U) {
             if (!chry_ringbuffer_write_byte(&g_uartrx, UART_ReceData(CDC_UART_BASE))) {
                 cdc_rx_overflow++;
@@ -246,47 +279,40 @@ RAM_CODE void IRQHandler_Uart1(void)
         __DMB();
     }
 
-    if ((status & (1UL << bsUART_TRANSMIT_INTENAB)) != 0U) {
-        while ((cdc_tx_offset < cdc_tx_length) &&
-               (apUART_Check_TXFIFO_FULL(CDC_UART_BASE) == 0U)) {
-            UART_SendData(CDC_UART_BASE, cdc_tx_data[cdc_tx_offset++]);
-        }
-        if (cdc_tx_offset == cdc_tx_length) {
-            apUART_Disable_TRANSMIT_INT(CDC_UART_BASE);
-            cdc_tx_complete = cdc_tx_length;
-            cdc_tx_length = 0U;
-            __DMB();
-        }
+    if ((status & UART_INTBIT_ERROR) != 0U) {
+        CDC_UART_BASE->StatusClear = 1U;
     }
 
-    if ((status & (1UL << bsUART_ERROR_INTENAB)) != 0U) {
-        CDC_UART_BASE->StatusClear = 1U;
+    if ((status & (1UL << bsUART_TRANSMIT_INTENAB)) != 0U) {
+        uint32_t count = chry_ringbuffer_get_used(&g_usbrx);
+        uint8_t byte;
+
+        if (count > 4U) {
+            if (count > UART_TX_FIFO_SIZE) {
+                count = UART_TX_FIFO_SIZE;
+            }
+            while ((count != 0U) &&
+                   (apUART_Check_TXFIFO_FULL(CDC_UART_BASE) == 0U)) {
+                chry_ringbuffer_read_byte(&g_usbrx, &byte);
+                UART_SendData(CDC_UART_BASE, byte);
+                count--;
+            }
+        } else {
+            apUART_Disable_TRANSMIT_INT(CDC_UART_BASE);
+            while (count != 0U) {
+                while (apUART_Check_TXFIFO_FULL(CDC_UART_BASE) != 0U) {
+                }
+                chry_ringbuffer_read_byte(&g_usbrx, &byte);
+                UART_SendData(CDC_UART_BASE, byte);
+                count--;
+            }
+        }
+        __DMB();
     }
 }
 
 void platform_uart_poll(void)
 {
-    uint16_t completed;
-    uint16_t control_line_state = 0U;
-    uint8_t control_line_dirty;
-    uint32_t state = __get_PRIMASK();
-
-    __disable_irq();
-    completed = cdc_tx_complete;
-    cdc_tx_complete = 0U;
-    control_line_dirty = cdc_control_line_dirty;
-    if (control_line_dirty != 0U) {
-        control_line_state = cdc_control_line_state;
-        cdc_control_line_dirty = 0U;
-        apply_cdc_control_line_state(control_line_state);
-    }
-    if (state == 0U) {
-        __enable_irq();
-    }
-
-    if (completed != 0U) {
-        chry_dap_usb2uart_uart_send_complete(completed);
-    }
 }
 
 //**************************************************************************************************

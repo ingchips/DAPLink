@@ -430,22 +430,6 @@ USB_NOCACHE_RAM_SECTION chry_ringbuffer_t g_usbrx;
 
 static volatile uint8_t usbrx_idle_flag = 0;
 static volatile uint8_t usbtx_idle_flag = 0;
-static volatile uint8_t uarttx_idle_flag = 0;
-
-static void cdc_start_usb_tx(void)
-{
-    uint32_t size = chry_ringbuffer_get_used(&g_uartrx);
-
-    if (size > DAP_PACKET_SIZE) {
-        size = DAP_PACKET_SIZE;
-    }
-    if (size != 0U) {
-        chry_ringbuffer_peek(&g_uartrx, cdc_usb_tx_buffer, size);
-        usbd_ep_start_write(0, CDC_IN_EP, cdc_usb_tx_buffer, size);
-    } else {
-        usbtx_idle_flag = 1U;
-    }
-}
 
 static void dap_transport_reset(dap_transport_t *transport)
 {
@@ -478,6 +462,32 @@ static void dap_transport_unlock(uint32_t state)
     if (state == 0U) {
         __enable_irq();
     }
+}
+
+static void cdc_start_usb_tx(void)
+{
+    uint32_t state;
+    uint32_t size;
+    int ret;
+
+    state = dap_transport_lock();
+    size = chry_ringbuffer_get_used(&g_uartrx);
+    if (size > DAP_PACKET_SIZE) {
+        size = DAP_PACKET_SIZE;
+    }
+    if (size == 0U) {
+        usbtx_idle_flag = 1U;
+        dap_transport_unlock(state);
+        return;
+    }
+
+    usbtx_idle_flag = 0U;
+    chry_ringbuffer_peek(&g_uartrx, cdc_usb_tx_buffer, size);
+    ret = usbd_ep_start_write(0, CDC_IN_EP, cdc_usb_tx_buffer, size);
+    if (ret < 0) {
+        usbtx_idle_flag = 1U;
+    }
+    dap_transport_unlock(state);
 }
 
 static uint16_t dap_transport_outstanding(const dap_transport_t *transport)
@@ -703,7 +713,6 @@ void usbd_event_handler(uint8_t busid, uint8_t event)
             dap_transport_reset(&dap_hid);
             usbrx_idle_flag = 0;
             usbtx_idle_flag = 0;
-            uarttx_idle_flag = 0;
             config_uart_transfer = 0;
             g_cdc_lincoding.dwDTERate = CDC_DEFAULT_BAUDRATE;
             g_cdc_lincoding.bCharFormat = CDC_DEFAULT_STOPBITS;
@@ -741,7 +750,6 @@ void usbd_event_handler(uint8_t busid, uint8_t event)
              * sends a different CDC line coding. */
             config_uart_transfer = 1;
             usbtx_idle_flag = 1;
-            uarttx_idle_flag = 1;
             __DMB();
             usb_configured = 1U;
             dap_transport_start_read(&dap_bulk);
@@ -791,27 +799,41 @@ void dap_hid_in_callback(uint8_t busid, uint8_t ep, uint32_t nbytes)
 
 void usbd_cdc_acm_bulk_out(uint8_t busid, uint8_t ep, uint32_t nbytes)
 {
+    uint32_t state;
+    uint32_t written;
+
     (void)busid;
+    (void)ep;
     if (nbytes != 0U) {
         platform_cdc_led_activity();
     }
-    chry_ringbuffer_write(&g_usbrx, usb_tmpbuffer, nbytes);
-    if (chry_ringbuffer_get_free(&g_usbrx) >= DAP_PACKET_SIZE) {
+
+    state = dap_transport_lock();
+    written = chry_ringbuffer_write(&g_usbrx, usb_tmpbuffer, nbytes);
+    if ((written == nbytes) &&
+        (chry_ringbuffer_get_free(&g_usbrx) >= DAP_PACKET_SIZE)) {
+        usbrx_idle_flag = 0U;
         usbd_ep_start_read(0, CDC_OUT_EP, usb_tmpbuffer, DAP_PACKET_SIZE);
     } else {
-        usbrx_idle_flag = 1;
+        usbrx_idle_flag = 1U;
     }
+    dap_transport_unlock(state);
 }
 
 void usbd_cdc_acm_bulk_in(uint8_t busid, uint8_t ep, uint32_t nbytes)
 {
+    uint32_t state;
+
     (void)busid;
+    (void)ep;
 
     if (nbytes != 0U) {
         platform_cdc_led_activity();
     }
 
+    state = dap_transport_lock();
     chry_ringbuffer_drop(&g_uartrx, nbytes);
+    dap_transport_unlock(state);
     if ((nbytes % DAP_PACKET_SIZE) == 0 && nbytes) {
         /* send zlp */
         usbd_ep_start_write(0, CDC_IN_EP, NULL, 0);
@@ -958,8 +980,7 @@ void usbd_cdc_acm_get_line_coding(uint8_t busid, uint8_t intf, struct cdc_line_c
 
 void chry_dap_usb2uart_handle(void)
 {
-    uint32_t size;
-    uint8_t *buffer;
+    uint32_t state;
 
     if (config_uart) {
         /* disable irq here */
@@ -967,7 +988,6 @@ void chry_dap_usb2uart_handle(void)
         /* config uart here */
         chry_dap_usb2uart_uart_config_callback((struct cdc_line_coding *)&g_cdc_lincoding);
         usbtx_idle_flag = 1;
-        uarttx_idle_flag = 1;
         config_uart_transfer = 1;
         //chry_ringbuffer_reset_read(&g_uartrx);
         /* enable irq here */
@@ -983,31 +1003,30 @@ void chry_dap_usb2uart_handle(void)
     */
 
     /* uartrx to usb tx */
-    if (usbtx_idle_flag) {
-        if (chry_ringbuffer_get_used(&g_uartrx)) {
-            usbtx_idle_flag = 0;
-            /* start first transfer */
-            cdc_start_usb_tx();
-        }
+    state = dap_transport_lock();
+    if ((usbtx_idle_flag != 0U) &&
+        (chry_ringbuffer_get_used(&g_uartrx) != 0U)) {
+        usbtx_idle_flag = 0U;
+        dap_transport_unlock(state);
+        cdc_start_usb_tx();
+    } else {
+        dap_transport_unlock(state);
     }
 
-    /* usbrx to uart tx */
-    if (uarttx_idle_flag) {
-        if (chry_ringbuffer_get_used(&g_usbrx)) {
-            uarttx_idle_flag = 0;
-            /* start first transfer */
-            buffer = chry_ringbuffer_linear_read_setup(&g_usbrx, &size);
-            chry_dap_usb2uart_uart_send_bydma(buffer, size);
-        }
+    /* UART TX ISR owns the ringbuffer read pointer. This call only kicks it. */
+    if (chry_ringbuffer_get_used(&g_usbrx) != 0U) {
+        chry_dap_usb2uart_uart_send_bydma(NULL, 0U);
     }
 
     /* check whether usb rx ringbuffer have space to store */
-    if (usbrx_idle_flag) {
-        if (chry_ringbuffer_get_free(&g_usbrx) >= DAP_PACKET_SIZE) {
-            usbrx_idle_flag = 0;
-            usbd_ep_start_read(0, CDC_OUT_EP, usb_tmpbuffer, DAP_PACKET_SIZE);
-        }
+    state = dap_transport_lock();
+    if ((usbrx_idle_flag != 0U) &&
+        (chry_ringbuffer_get_free(&g_usbrx) >= DAP_PACKET_SIZE)) {
+        usbrx_idle_flag = 0U;
+        usbd_ep_start_read(0, CDC_OUT_EP, usb_tmpbuffer, DAP_PACKET_SIZE);
     }
+    dap_transport_unlock(state);
+
 }
 
 /* implment by user */
@@ -1018,16 +1037,7 @@ __WEAK void chry_dap_usb2uart_uart_config_callback(struct cdc_line_coding *line_
 /* called by user */
 void chry_dap_usb2uart_uart_send_complete(uint32_t size)
 {
-    uint8_t *buffer;
-
-    chry_ringbuffer_linear_read_done(&g_usbrx, size);
-
-    if (chry_ringbuffer_get_used(&g_usbrx)) {
-        buffer = chry_ringbuffer_linear_read_setup(&g_usbrx, &size);
-        chry_dap_usb2uart_uart_send_bydma(buffer, size);
-    } else {
-        uarttx_idle_flag = 1;
-    }
+    (void)size;
 }
 
 /* implment by user */

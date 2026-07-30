@@ -24,7 +24,7 @@
 ## 首次下载
 
 1. 连接调试器的 SWD/J-Link 接口。
-2. 先下载 `firmware/bl/ing916_bl.bin`。使用裸 BIN 下载时，起始地址为 `0x02000000`；也可以打开 `bl/ing916__bl.uvprojx` 在 Keil 中下载。
+2. 先下载 `firmware/bl/ing916_bl.bin`。使用裸 BIN 下载时，起始地址为 `0x02002000`；也可以打开 `bl/ing916__bl.uvprojx` 在 Keil 中下载。
 3. 再从 DAPLink 或 CherryDAP 中选择一套 APP 下载：
    - HEX 文件自带地址信息，可直接下载。
    - 裸 BIN 文件的下载起始地址为 `0x0200F000`。
