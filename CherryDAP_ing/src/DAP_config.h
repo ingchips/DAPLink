@@ -105,6 +105,7 @@ __STATIC_FORCEINLINE void     PIN_nRESET_OUT(uint32_t bit)
     if (bit) {
         GIO_SetDirection(nRESET_PIN, GIO_DIR_INPUT);
     } else {
+        swd_target_reset_aircr();
         GIO_WriteValue(nRESET_PIN, 0U);
         GIO_SetDirection(nRESET_PIN, GIO_DIR_OUTPUT);
     }
